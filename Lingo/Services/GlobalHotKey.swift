@@ -6,7 +6,7 @@ final class GlobalHotKey {
     private var eventHandler: EventHandlerRef?
     private let onPress: () -> Void
 
-    init?(shortcut: KeyShortcut, onPress: @escaping () -> Void) {
+    init?(keyCode: UInt16, modifiers: NSEvent.ModifierFlags, onPress: @escaping () -> Void) {
         self.onPress = onPress
 
         var eventType = EventTypeSpec(
@@ -26,8 +26,8 @@ final class GlobalHotKey {
 
         let identifier = EventHotKeyID(signature: OSType(0x4C4E474F), id: 1)
         let registerStatus = RegisterEventHotKey(
-            UInt32(shortcut.keyCode),
-            shortcut.carbonModifiers,
+            UInt32(keyCode),
+            Self.carbonModifiers(for: modifiers),
             identifier,
             GetApplicationEventTarget(),
             0,
@@ -57,6 +57,15 @@ final class GlobalHotKey {
 
     fileprivate func fire() {
         onPress()
+    }
+
+    private static func carbonModifiers(for modifiers: NSEvent.ModifierFlags) -> UInt32 {
+        var flags: UInt32 = 0
+        if modifiers.contains(.command) { flags |= UInt32(cmdKey) }
+        if modifiers.contains(.option) { flags |= UInt32(optionKey) }
+        if modifiers.contains(.control) { flags |= UInt32(controlKey) }
+        if modifiers.contains(.shift) { flags |= UInt32(shiftKey) }
+        return flags
     }
 }
 
