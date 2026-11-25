@@ -26,7 +26,7 @@ final class SettingsWindowController {
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
             window.isRestorable = false
-            window.setContentSize(NSSize(width: 460, height: 248))
+            window.setContentSize(NSSize(width: 460, height: 196))
             self.window = window
         }
 
