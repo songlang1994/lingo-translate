@@ -1,4 +1,4 @@
-# Lingo
+# Lingo Translate
 
 macOS 菜单栏翻译工具。全局快捷键唤起浮动面板，调用 Responses 风格的大模型接口完成翻译。
 
@@ -20,7 +20,7 @@ macOS 菜单栏翻译工具。全局快捷键唤起浮动面板，调用 Respons
 
 ```bash
 make run          # 构建 Debug 并启动
-make release      # 构建 Release 并打包 dist/Lingo.zip
+make release      # 构建 Release 并打包 dist/Lingo Translate.zip
 make install      # 构建 Release 并复制到 /Applications
 ```
 
@@ -47,7 +47,7 @@ Endpoint 会自动补全请求路径，不需要自己拼完整地址：
 | `https://api.deepseek.com/v1/responses` | 保持不变 |
 | `localhost:8080` | `http://localhost:8080/v1/responses` |
 
-API key 保存在 `~/Library/Application Support/Lingo/api-key`，文件权限为 `600`，不写入 UserDefaults。若之前因为只填了服务根地址而收到 `not found`，升级后无需修改配置，路径会自动补全。
+API key 保存在系统钥匙串（Login Keychain，service 为应用 Bundle ID，account `api-key`），不写入 UserDefaults，也不落盘为明文文件。
 
 ## 测试真实接口
 
@@ -100,7 +100,7 @@ curl -sS -N "${LINGO_API_ENDPOINT%/}/v1/responses" \
 
 在设置中点击快捷键按钮后，按下组合键即可录制组合键；连续快速按两次同一个修饰键即可录制双击。双击间隔固定为 300ms，不提供配置项。
 
-双击修饰键依赖全局事件监听（修饰键状态与按键），需要在「系统设置 → 隐私与安全性 → 辅助功能」中允许 Lingo。应用启动时不会请求该权限，只有在录制并保存双击修饰键时才发起申请；设置窗口在选中双击方案且缺少权限时会显示提示和打开系统设置的按钮。授权后回到应用即可生效，若仍不生效可重启应用。
+双击修饰键依赖全局事件监听（修饰键状态与按键），需要在「系统设置 → 隐私与安全性 → 辅助功能」中允许 Lingo Translate。应用启动时不会请求该权限，只有在录制并保存双击修饰键时才发起申请；设置窗口在选中双击方案且缺少权限时会显示提示和打开系统设置的按钮。授权后回到应用即可生效，若仍不生效可重启应用。
 
 ## 结构
 
@@ -108,7 +108,7 @@ curl -sS -N "${LINGO_API_ENDPOINT%/}/v1/responses" \
 Lingo/
   App/        应用生命周期、面板、设置窗口、快捷键管理、辅助功能权限、状态
   Model/      语言列表、配置、快捷键值类型、双击检测、系统提示词
-  Services/   Responses 客户端、Carbon 全局快捷键、双击修饰键监听
+  Services/   Responses 客户端、Carbon 全局快捷键、双击修饰键监听、钥匙串密钥存储
   UI/         双栏面板界面、设置界面、快捷键录制控件
   Resources/  应用图标与配色
 Support/      Info.plist
@@ -125,6 +125,6 @@ scripts/      应用图标生成脚本
 
 ## 说明
 
-- 应用为 ad-hoc 签名，首次从网络下载后运行可能需要在“隐私与安全性”中允许打开。
-- 未开启 App Sandbox，API key 存于用户目录，便于本地直接运行。
+- 应用使用 Apple Development 证书（Team `9K85QF2H9R`）签名，未做公证；仅适合本机/开发机使用，分发给他人仍需在“隐私与安全性”中允许打开。
+- 未开启 App Sandbox；API key 存于登录钥匙串（service 为 Bundle ID / account `api-key`），需要时可手动删除。
 - 仅实现 Responses 风格接口，未接入 Chat Completions。

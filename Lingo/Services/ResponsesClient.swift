@@ -31,7 +31,7 @@ final class ResponsesClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 90
         configuration.timeoutIntervalForResource = 300
-        configuration.httpAdditionalHeaders = ["User-Agent": "Lingo/1.0"]
+        configuration.httpAdditionalHeaders = ["User-Agent": "LingoTranslate/1.0"]
         session = URLSession(configuration: configuration)
     }
 

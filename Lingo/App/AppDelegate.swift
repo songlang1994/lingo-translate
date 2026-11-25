@@ -112,7 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         guard let button = statusItem.button else { return }
-        let image = NSImage(systemSymbolName: "character.bubble", accessibilityDescription: "Lingo")
+        let image = NSImage(systemSymbolName: "character.bubble", accessibilityDescription: "Lingo Translate")
         image?.isTemplate = true
         button.image = image
         button.target = self
@@ -129,7 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
-        let quitItem = NSMenuItem(title: "Quit Lingo", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quit Lingo Translate", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quitItem)
 
         statusItem.menu = menu
@@ -146,7 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsItem.target = self
         applicationMenu.addItem(settingsItem)
         applicationMenu.addItem(.separator())
-        applicationMenu.addItem(withTitle: "Quit Lingo", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        applicationMenu.addItem(withTitle: "Quit Lingo Translate", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         applicationItem.submenu = applicationMenu
 
         let editItem = NSMenuItem()

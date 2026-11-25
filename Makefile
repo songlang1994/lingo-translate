@@ -1,4 +1,5 @@
-APP = Lingo
+APP = Lingo Translate
+PROJECT = Lingo
 SCHEME = Lingo
 CONFIG ?= Debug
 DERIVED = build
@@ -7,7 +8,7 @@ BUNDLE = $(DERIVED)/Build/Products/$(CONFIG)/$(APP).app
 .PHONY: build run stop clean release install
 
 build:
-	xcodebuild -project $(APP).xcodeproj -scheme $(SCHEME) -configuration $(CONFIG) -derivedDataPath $(DERIVED) build
+	xcodebuild -project $(PROJECT).xcodeproj -scheme $(SCHEME) -configuration $(CONFIG) -derivedDataPath $(DERIVED) build
 
 run: build
 	open "$(BUNDLE)"
@@ -19,7 +20,7 @@ clean:
 	rm -rf $(DERIVED) dist
 
 release:
-	xcodebuild -project $(APP).xcodeproj -scheme $(SCHEME) -configuration Release -derivedDataPath $(DERIVED) build
+	xcodebuild -project $(PROJECT).xcodeproj -scheme $(SCHEME) -configuration Release -derivedDataPath $(DERIVED) build
 	mkdir -p dist
 	ditto -c -k --sequesterRsrc --keepParent "$(DERIVED)/Build/Products/Release/$(APP).app" "dist/$(APP).zip"
 

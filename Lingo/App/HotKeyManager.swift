@@ -70,7 +70,7 @@ final class HotKeyManager {
             hotKey = registered
 
             if registered == nil {
-                NSLog("Lingo: failed to register shortcut %@", settings.shortcut.display)
+                NSLog("Lingo Translate: failed to register shortcut %@", settings.shortcut.display)
                 if userInitiated {
                     NotificationCenter.default.post(name: .hotKeyRegistrationFailed, object: nil)
                 }
@@ -79,7 +79,7 @@ final class HotKeyManager {
 
         case let .doubleTapModifier(modifier):
             guard AccessibilityPermission.isGranted else {
-                NSLog("Lingo: accessibility permission is required for shortcut %@", settings.shortcut.display)
+                NSLog("Lingo Translate: accessibility permission is required for shortcut %@", settings.shortcut.display)
                 return false
             }
 
@@ -87,7 +87,7 @@ final class HotKeyManager {
                 self?.onPress()
             }
             guard monitor.start() else {
-                NSLog("Lingo: failed to monitor shortcut %@", settings.shortcut.display)
+                NSLog("Lingo Translate: failed to monitor shortcut %@", settings.shortcut.display)
                 return false
             }
 
