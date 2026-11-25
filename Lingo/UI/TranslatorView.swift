@@ -4,15 +4,21 @@ struct TranslatorView: View {
     @ObservedObject var model: TranslatorModel
     let openSettings: () -> Void
 
-    @FocusState private var inputFocused: Bool
+    @FocusState private var focusedParagraph: Int?
+
+    @State private var rowFrames: [Int: CGRect] = [:]
+    @State private var viewportFrame: CGRect = .zero
+
+    private static let panelSpace = "lingo-panel"
+
+    private let rowSpacing: CGFloat = 12
+    private let gutter: CGFloat = 14
 
     var body: some View {
         VStack(spacing: 0) {
             header
             separator
-            inputArea
-            separator
-            outputArea
+            content
         }
         .background(
             ZStack {
@@ -24,8 +30,18 @@ struct TranslatorView: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.5)
         )
-        .frame(minWidth: 420, minHeight: 260)
+        .frame(minWidth: 520, minHeight: 260)
         .ignoresSafeArea(.container, edges: .top)
+        .coordinateSpace(.named(Self.panelSpace))
+        .background(MouseDownMonitor { point in
+            handleClick(at: point)
+        })
+        .onPreferenceChange(RowFramePreferenceKey.self) { frames in
+            rowFrames = frames
+        }
+        .onPreferenceChange(ViewportFramePreferenceKey.self) { frame in
+            viewportFrame = frame
+        }
         .onChange(of: model.input) { _, _ in
             model.inputDidChange()
         }
@@ -70,6 +86,9 @@ struct TranslatorView: View {
                     .controlSize(.mini)
                     .scaleEffect(0.7)
                     .frame(width: 14, height: 14)
+
+                StopButton(action: model.stopTranslation)
+                    .transition(.opacity)
             }
 
             IconButton(
@@ -88,52 +107,171 @@ struct TranslatorView: View {
         .padding(.horizontal, 12)
         .padding(.top, 10)
         .padding(.bottom, 6)
+        .animation(.easeInOut(duration: 0.15), value: model.isTranslating)
     }
 
-    private var inputArea: some View {
-        ZStack(alignment: .topLeading) {
-            TextEditor(text: $model.input)
-                .font(.system(size: 17))
-                .lineSpacing(3)
-                .scrollContentBackground(.hidden)
-                .focused($inputFocused)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-
-            if model.input.isEmpty {
-                Text("Text")
-                    .font(.system(size: 17))
-                    .foregroundStyle(.tertiary)
-                    .padding(.leading, 12)
-                    .padding(.top, 10)
-                    .allowsHitTesting(false)
+    private var content: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                VStack(spacing: 0) {
+                    ForEach(0..<rowCount, id: \.self) { index in
+                        row(index)
+                            .id(index)
+                    }
+                }
+                .padding(.bottom, 14)
+            }
+            .onChange(of: model.output) { _, _ in
+                guard model.isTranslating, !model.outputParagraphs.isEmpty else { return }
+                proxy.scrollTo(model.outputParagraphs.count - 1, anchor: .bottom)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: ViewportFramePreferenceKey.self,
+                    value: proxy.frame(in: .named(Self.panelSpace))
+                )
+            }
+        )
+        .overlay(alignment: .center) {
+            Rectangle()
+                .fill(Color.primary.opacity(0.07))
+                .frame(width: 1)
+                .allowsHitTesting(false)
+        }
     }
 
-    private var outputArea: some View {
-        ScrollView(.vertical) {
-            Group {
-                if let message = model.errorMessage, !message.isEmpty {
-                    Text(message)
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color(nsColor: .systemRed).opacity(0.9))
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    Text(model.output)
+    private func row(_ index: Int) -> some View {
+        let isHighlighted = model.highlightedParagraph == index
+
+        return HStack(alignment: .top, spacing: 0) {
+            inputCell(index, isHighlighted: isHighlighted)
+                .padding(.trailing, gutter)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+
+            outputCell(index, isHighlighted: isHighlighted)
+                .padding(.leading, gutter)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .padding(.horizontal, gutter)
+        .padding(.top, index == 0 ? 12 : rowSpacing)
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: RowFramePreferenceKey.self,
+                    value: [index: proxy.frame(in: .named(Self.panelSpace))]
+                )
+            }
+        )
+    }
+
+    private func inputCell(_ index: Int, isHighlighted: Bool) -> some View {
+        TextField("", text: inputBinding(index), axis: .vertical)
+            .textFieldStyle(.plain)
+            .font(.system(size: 17))
+            .lineLimit(1...)
+            .focused($focusedParagraph, equals: index)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, minHeight: 22, alignment: .topLeading)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isHighlighted ? Self.sourceHighlight : Color.clear)
+                    .padding(.horizontal, -6)
+                    .padding(.vertical, -3)
+            )
+            .overlay(alignment: .topLeading) {
+                if index == 0, model.input.isEmpty {
+                    Text("Text")
                         .font(.system(size: 17))
-                        .lineSpacing(3)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .foregroundStyle(.tertiary)
+                        .allowsHitTesting(false)
+                        .padding(.leading, 1)
+                        .padding(.top, 1)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 17)
-            .padding(.vertical, 12)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onSubmit {
+                insertParagraph(after: index)
+            }
     }
+
+    @ViewBuilder
+    private func outputCell(_ index: Int, isHighlighted: Bool) -> some View {
+        if index == 0, let message = model.errorMessage, !message.isEmpty {
+            Text(message)
+                .font(.system(size: 13))
+                .foregroundStyle(Color(nsColor: .systemRed).opacity(0.9))
+                .fixedSize(horizontal: false, vertical: true)
+        } else if index == 0, model.isTranslating, model.output.isEmpty {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.mini)
+                Text("Translating…")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.tertiary)
+            }
+        } else {
+            Text(model.translatedParagraph(at: index))
+                .font(.system(size: 17))
+                .lineSpacing(3)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, minHeight: 22, alignment: .topLeading)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(isHighlighted ? Self.translationHighlight : Color.clear)
+                        .padding(.horizontal, -6)
+                        .padding(.vertical, -3)
+                )
+        }
+    }
+
+    private var rowCount: Int {
+        max(model.sourceParagraphs.count, model.outputParagraphs.count, 1)
+    }
+
+    private func inputBinding(_ index: Int) -> Binding<String> {
+        Binding(
+            get: { model.paragraph(at: index) },
+            set: { newValue in
+                let inserted = model.setParagraph(index, to: newValue)
+                guard inserted > 0 else { return }
+                DispatchQueue.main.async {
+                    focusedParagraph = index + inserted
+                }
+            }
+        )
+    }
+
+    private func insertParagraph(after index: Int) {
+        model.setParagraph(index, to: model.paragraph(at: index) + "\n")
+        DispatchQueue.main.async {
+            focusedParagraph = index + 1
+        }
+    }
+
+    private func handleClick(at point: CGPoint) {
+        guard viewportFrame.contains(point) else { return }
+
+        guard let index = rowFrames.first(where: { $0.value.contains(point) })?.key else {
+            model.clearHighlight()
+            return
+        }
+        model.highlightParagraph(at: index)
+    }
+
+    private static let sourceHighlight = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.isDark
+            ? NSColor(srgbRed: 0.42, green: 0.62, blue: 1.0, alpha: 0.40)
+            : NSColor(srgbRed: 0.62, green: 0.78, blue: 1.0, alpha: 0.45)
+    })
+
+    private static let translationHighlight = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.isDark
+            ? NSColor(srgbRed: 1.0, green: 0.76, blue: 0.87, alpha: 0.58)
+            : NSColor(srgbRed: 1.0, green: 0.73, blue: 0.82, alpha: 0.6)
+    })
 
     private var separator: some View {
         Rectangle()
@@ -142,9 +280,113 @@ struct TranslatorView: View {
     }
 
     private func focusInput() {
+        let target = min(max(focusedParagraph ?? 0, 0), max(rowCount - 1, 0))
+        focusedParagraph = nil
         DispatchQueue.main.async {
-            inputFocused = true
+            focusedParagraph = target
         }
+    }
+}
+
+private struct RowFramePreferenceKey: PreferenceKey {
+    static let defaultValue: [Int: CGRect] = [:]
+
+    static func reduce(value: inout [Int: CGRect], nextValue: () -> [Int: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+private struct ViewportFramePreferenceKey: PreferenceKey {
+    static let defaultValue: CGRect = .zero
+
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        let next = nextValue()
+        if next != .zero { value = next }
+    }
+}
+
+private extension NSAppearance {
+    var isDark: Bool {
+        bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    }
+}
+
+/// Reports left-click locations without consuming the event, so text editing and
+/// text selection keep working while paragraphs can still be highlighted.
+private struct MouseDownMonitor: NSViewRepresentable {
+    let onClick: (CGPoint) -> Void
+
+    func makeNSView(context: Context) -> MonitorView {
+        let view = MonitorView()
+        view.onClick = onClick
+        return view
+    }
+
+    func updateNSView(_ nsView: MonitorView, context: Context) {
+        nsView.onClick = onClick
+    }
+
+    final class MonitorView: NSView {
+        var onClick: ((CGPoint) -> Void)?
+        private var monitor: Any?
+
+        override var isFlipped: Bool { true }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            removeMonitor()
+
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
+                if let self, let window = self.window, event.window === window {
+                    self.onClick?(self.convert(event.locationInWindow, from: nil))
+                }
+                return event
+            }
+        }
+
+        deinit {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+            }
+        }
+
+        private func removeMonitor() {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+                self.monitor = nil
+            }
+        }
+    }
+}
+
+private struct StopButton: View {
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 8, weight: .bold))
+                Text("Stop")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .frame(height: 22)
+            .background(
+                Capsule()
+                    .fill(Color.primary.opacity(isHovering ? 0.11 : 0.06))
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help("Stop translating")
+        .onHover { isHovering = $0 }
     }
 }
 

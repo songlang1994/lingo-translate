@@ -5,10 +5,12 @@ import Combine
 final class TranslatorModel: ObservableObject {
     @Published var input = ""
     @Published var output = ""
+    @Published private(set) var outputParagraphs: [String] = []
     @Published var isTranslating = false
     @Published var errorMessage: String?
     @Published var copied = false
     @Published var focusToken = 0
+    @Published private(set) var highlightedParagraph: Int?
 
     private(set) var sourceCode: String
     private(set) var targetCode: String
@@ -30,6 +32,8 @@ final class TranslatorModel: ObservableObject {
     var sourceLanguage: Language { Language.named(sourceCode) }
     var targetLanguage: Language { Language.named(targetCode) }
 
+    var sourceParagraphs: [String] { Self.paragraphs(in: input) }
+
     var canCopy: Bool {
         !output.isEmpty && errorMessage == nil && !isTranslating
     }
@@ -45,11 +49,58 @@ final class TranslatorModel: ObservableObject {
     }
 
     func inputDidChange() {
+        validateHighlight()
+
         if let programmaticInput, programmaticInput == input {
             self.programmaticInput = nil
             return
         }
         scheduleTranslation()
+    }
+
+    func paragraph(at index: Int) -> String {
+        let paragraphs = sourceParagraphs
+        return index >= 0 && index < paragraphs.count ? paragraphs[index] : ""
+    }
+
+    func translatedParagraph(at index: Int) -> String {
+        index >= 0 && index < outputParagraphs.count ? outputParagraphs[index] : ""
+    }
+
+    /// Highlights both columns for one paragraph. Blank paragraphs cannot be highlighted.
+    func highlightParagraph(at index: Int) {
+        highlightedParagraph = isBlankParagraph(index) ? nil : index
+    }
+
+    func clearHighlight() {
+        highlightedParagraph = nil
+    }
+
+    private func validateHighlight() {
+        guard let index = highlightedParagraph, isBlankParagraph(index) else { return }
+        highlightedParagraph = nil
+    }
+
+    private func isBlankParagraph(_ index: Int) -> Bool {
+        Self.isBlank(paragraph(at: index)) && Self.isBlank(translatedParagraph(at: index))
+    }
+
+    /// Replaces one paragraph and returns how many extra paragraphs the new text introduced.
+    @discardableResult
+    func setParagraph(_ index: Int, to text: String) -> Int {
+        var paragraphs = sourceParagraphs
+
+        while paragraphs.count <= index {
+            paragraphs.append("")
+        }
+
+        let lines = Self.paragraphs(in: text)
+        paragraphs.replaceSubrange(index..<(index + 1), with: lines)
+
+        let updated = paragraphs.joined(separator: "\n")
+        guard updated != input else { return 0 }
+        input = updated
+        return max(lines.count - 1, 0)
     }
 
     func selectSource(_ code: String) {
@@ -69,6 +120,16 @@ final class TranslatorModel: ObservableObject {
     func translateNow() {
         debounceTask?.cancel()
         startTranslation()
+    }
+
+    func stopTranslation() {
+        guard isTranslating else { return }
+        translationTask?.cancel()
+        translationTask = nil
+        debounceTask?.cancel()
+        debounceTask = nil
+        requestID += 1
+        isTranslating = false
     }
 
     func swapLanguages() {
@@ -99,6 +160,7 @@ final class TranslatorModel: ObservableObject {
             programmaticInput = output
             input = output
             output = previousInput
+            outputParagraphs = Self.paragraphs(in: previousInput)
         } else {
             startTranslation()
         }
@@ -135,7 +197,7 @@ final class TranslatorModel: ObservableObject {
             requestID += 1
             isTranslating = false
             errorMessage = nil
-            output = ""
+            applyOutput("")
             return
         }
 
@@ -147,8 +209,8 @@ final class TranslatorModel: ObservableObject {
     }
 
     private func startTranslation() {
-        let text = trimmedInput
-        guard !text.isEmpty else { return }
+        guard !trimmedInput.isEmpty else { return }
+        let text = input
 
         let source = sourceLanguage
         let target = targetLanguage
@@ -162,7 +224,7 @@ final class TranslatorModel: ObservableObject {
 
         errorMessage = nil
         isTranslating = true
-        output = ""
+        applyOutput("")
 
         translationTask = Task { [weak self] in
             guard let self else { return }
@@ -177,19 +239,36 @@ final class TranslatorModel: ObservableObject {
                 ) { delta in
                     guard self.requestID == currentRequestID else { return }
                     streamed += delta
-                    self.output = streamed
+                    self.applyOutput(streamed)
                 }
 
                 guard !Task.isCancelled, self.requestID == currentRequestID else { return }
-                self.output = result
+                self.applyOutput(result)
                 self.isTranslating = false
             } catch {
                 guard !Task.isCancelled, self.requestID == currentRequestID else { return }
-                self.output = ""
+                self.applyOutput("")
                 self.isTranslating = false
                 self.errorMessage = Self.message(for: error, configuration: configuration)
             }
         }
+    }
+
+    private func applyOutput(_ text: String) {
+        output = text
+        outputParagraphs = text.isEmpty ? [] : Self.paragraphs(in: text)
+        validateHighlight()
+    }
+
+    /// Splits text into paragraphs on line breaks, keeping blank paragraphs for alignment.
+    private static func paragraphs(in text: String) -> [String] {
+        text.components(separatedBy: "\n").map { line in
+            line.hasSuffix("\r") ? String(line.dropLast()) : line
+        }
+    }
+
+    private static func isBlank(_ text: String) -> Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private static func message(for error: Error, configuration: Configuration) -> String {

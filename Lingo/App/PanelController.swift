@@ -18,7 +18,7 @@ final class PanelController {
     init(model: TranslatorModel, openSettings: @escaping () -> Void) {
         self.model = model
 
-        let size = NSSize(width: 640, height: 420)
+        let size = NSSize(width: 800, height: 480)
         panel = TranslationPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.titled, .fullSizeContentView, .resizable, .closable],
@@ -41,7 +41,7 @@ final class PanelController {
         panel.hasShadow = true
         panel.hidesOnDeactivate = false
         panel.isRestorable = false
-        panel.minSize = NSSize(width: 420, height: 260)
+        panel.minSize = NSSize(width: 560, height: 280)
 
         panel.standardWindowButton(.closeButton)?.isHidden = true
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
