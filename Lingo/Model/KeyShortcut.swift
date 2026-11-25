@@ -1,28 +1,62 @@
 import AppKit
 import Carbon.HIToolbox
 
-struct KeyShortcut: Equatable {
-    var keyCode: UInt16
-    var modifiers: NSEvent.ModifierFlags
-    var display: String
+enum KeyShortcut: Equatable {
+    /// A regular keyboard shortcut, for example ⌥⌘L.
+    case combination(keyCode: UInt16, modifiers: NSEvent.ModifierFlags, display: String)
+    /// Two quick presses of a single modifier key, for example Control.
+    case doubleTapModifier(NSEvent.ModifierFlags)
 
-    static let `default` = KeyShortcut(
+    static let trackableModifiers: NSEvent.ModifierFlags = [.control, .option, .command, .shift]
+
+    static let `default` = KeyShortcut.combination(
         keyCode: UInt16(kVK_ANSI_L),
         modifiers: [.option, .command],
         display: "⌥⌘L"
     )
 
-    var carbonModifiers: UInt32 {
-        var flags: UInt32 = 0
-        if modifiers.contains(.command) { flags |= UInt32(cmdKey) }
-        if modifiers.contains(.option) { flags |= UInt32(optionKey) }
-        if modifiers.contains(.control) { flags |= UInt32(controlKey) }
-        if modifiers.contains(.shift) { flags |= UInt32(shiftKey) }
-        return flags
+    var display: String {
+        switch self {
+        case let .combination(_, _, display):
+            return display
+        case let .doubleTapModifier(modifier):
+            return "Double-tap \(Self.symbol(for: modifier))"
+        }
+    }
+
+    var isDoubleTap: Bool {
+        if case .doubleTapModifier = self { return true }
+        return false
+    }
+
+    static func symbol(for modifier: NSEvent.ModifierFlags) -> String {
+        if modifier.contains(.control) { return "⌃" }
+        if modifier.contains(.option) { return "⌥" }
+        if modifier.contains(.command) { return "⌘" }
+        if modifier.contains(.shift) { return "⇧" }
+        return ""
+    }
+
+    /// Returns the modifier whose physical key produced `keyCode`, if any.
+    static func modifier(forKeyCode keyCode: UInt16) -> NSEvent.ModifierFlags? {
+        switch Int(keyCode) {
+        case kVK_Control, kVK_RightControl: return .control
+        case kVK_Option, kVK_RightOption: return .option
+        case kVK_Command, kVK_RightCommand: return .command
+        case kVK_Shift, kVK_RightShift: return .shift
+        default: return nil
+        }
+    }
+
+    /// Returns the only modifier present in `modifiers`, or nil when zero or several are present.
+    static func singleModifier(in modifiers: NSEvent.ModifierFlags) -> NSEvent.ModifierFlags? {
+        let present = [NSEvent.ModifierFlags.control, .option, .command, .shift]
+            .filter { modifiers.contains($0) }
+        return present.count == 1 ? present[0] : nil
     }
 
     static func display(for event: NSEvent) -> String? {
-        let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        let modifiers = event.modifierFlags.intersection(trackableModifiers)
         guard !modifiers.intersection([.command, .option, .control]).isEmpty else { return nil }
 
         var text = ""

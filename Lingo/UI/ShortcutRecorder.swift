@@ -7,6 +7,7 @@ struct ShortcutRecorder: View {
 
     @State private var isRecording = false
     @State private var monitor: Any?
+    @State private var detector = DoubleTapModifierDetector()
 
     var body: some View {
         Button {
@@ -31,6 +32,7 @@ struct ShortcutRecorder: View {
                 )
         }
         .buttonStyle(.plain)
+        .help("Press a key combination, or double-tap ⌃ ⌥ ⌘ ⇧")
         .onDisappear {
             stopRecording()
         }
@@ -39,9 +41,36 @@ struct ShortcutRecorder: View {
     private func startRecording() {
         guard !isRecording else { return }
         isRecording = true
+        detector.reset()
         suspendHotKey(true)
 
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
+            handle(event)
+        }
+    }
+
+    private func handle(_ event: NSEvent) -> NSEvent? {
+        switch event.type {
+        case .flagsChanged:
+            let modifier = detector.handleFlagsChanged(
+                keyCode: event.keyCode,
+                modifierFlags: event.modifierFlags,
+                at: event.timestamp
+            )
+            if let modifier {
+                shortcut = .doubleTapModifier(modifier)
+                stopRecording()
+                // Only ask for Accessibility access when a double-tap shortcut is actually chosen.
+                if !AccessibilityPermission.isGranted {
+                    AccessibilityPermission.prompt()
+                }
+            }
+            // Consume modifier presses so they do not reach the rest of the window.
+            return nil
+
+        case .keyDown:
+            detector.handleKeyDown()
+
             if event.keyCode == 53 {
                 stopRecording()
                 return nil
@@ -52,13 +81,16 @@ struct ShortcutRecorder: View {
                 return nil
             }
 
-            shortcut = KeyShortcut(
+            shortcut = .combination(
                 keyCode: event.keyCode,
-                modifiers: event.modifierFlags.intersection([.command, .option, .control, .shift]),
+                modifiers: event.modifierFlags.intersection(KeyShortcut.trackableModifiers),
                 display: display
             )
             stopRecording()
             return nil
+
+        default:
+            return event
         }
     }
 

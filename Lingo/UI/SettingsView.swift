@@ -1,8 +1,12 @@
+import AppKit
+import Combine
 import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     let suspendHotKey: (Bool) -> Void
+
+    @State private var accessibilityGranted = AccessibilityPermission.isGranted
 
     var body: some View {
         Form {
@@ -12,8 +16,39 @@ struct SettingsView: View {
             LabeledContent("Shortcut") {
                 ShortcutRecorder(shortcut: $settings.shortcut, suspendHotKey: suspendHotKey)
             }
+            Text("While recording, press a key combination or double-tap ⌃ ⌥ ⌘ ⇧.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if settings.shortcut.isDoubleTap && !accessibilityGranted {
+                accessibilityWarning
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 460, height: 196)
+        .frame(width: 460, height: 252)
+        .onAppear {
+            refreshAccessibilityStatus()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshAccessibilityStatus()
+        }
+    }
+
+    private var accessibilityWarning: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.yellow)
+            Text("Double-tap shortcuts require Accessibility access.")
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            Button("Open System Settings") {
+                AccessibilityPermission.request()
+            }
+            .controlSize(.small)
+        }
+        .font(.caption)
+    }
+
+    private func refreshAccessibilityStatus() {
+        accessibilityGranted = AccessibilityPermission.isGranted
     }
 }

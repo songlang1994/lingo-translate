@@ -8,10 +8,18 @@ final class AppSettings: ObservableObject {
         static let model = "model"
         static let source = "sourceLanguage"
         static let target = "targetLanguage"
+        static let shortcutKind = "shortcutKind"
         static let shortcutCode = "shortcutKeyCode"
         static let shortcutModifiers = "shortcutModifiers"
         static let shortcutDisplay = "shortcutDisplay"
     }
+
+    private enum ShortcutKind {
+        static let combination = "combination"
+        static let doubleTapModifier = "doubleTapModifier"
+    }
+
+    private static let legacyDefaultShortcutDisplay = "⌥⌘L"
 
     static let defaultEndpoint = "https://api.openai.com/v1/responses"
     static let defaultModel = "gpt-4.1-mini"
@@ -38,9 +46,18 @@ final class AppSettings: ObservableObject {
 
     @Published var shortcut: KeyShortcut {
         didSet {
-            defaults.set(Int(shortcut.keyCode), forKey: StorageKey.shortcutCode)
-            defaults.set(Int(shortcut.modifiers.rawValue), forKey: StorageKey.shortcutModifiers)
-            defaults.set(shortcut.display, forKey: StorageKey.shortcutDisplay)
+            switch shortcut {
+            case let .combination(keyCode, modifiers, display):
+                defaults.set(ShortcutKind.combination, forKey: StorageKey.shortcutKind)
+                defaults.set(Int(keyCode), forKey: StorageKey.shortcutCode)
+                defaults.set(Int(modifiers.rawValue), forKey: StorageKey.shortcutModifiers)
+                defaults.set(display, forKey: StorageKey.shortcutDisplay)
+            case let .doubleTapModifier(modifier):
+                defaults.set(ShortcutKind.doubleTapModifier, forKey: StorageKey.shortcutKind)
+                defaults.set(Int(modifier.rawValue), forKey: StorageKey.shortcutModifiers)
+                defaults.removeObject(forKey: StorageKey.shortcutCode)
+                defaults.removeObject(forKey: StorageKey.shortcutDisplay)
+            }
         }
     }
 
@@ -68,17 +85,28 @@ final class AppSettings: ObservableObject {
 
     private static func loadShortcut() -> KeyShortcut {
         let defaults = UserDefaults.standard
-        guard defaults.object(forKey: StorageKey.shortcutCode) != nil else {
+        let kind = defaults.string(forKey: StorageKey.shortcutKind)
+        let rawModifiers = UInt(defaults.integer(forKey: StorageKey.shortcutModifiers))
+        let modifiers = NSEvent.ModifierFlags(rawValue: rawModifiers)
+
+        if kind == ShortcutKind.doubleTapModifier {
+            guard let modifier = KeyShortcut.singleModifier(in: modifiers) else {
+                return .default
+            }
+            return .doubleTapModifier(modifier)
+        }
+
+        let storedDisplay = defaults.string(forKey: StorageKey.shortcutDisplay)
+        // Versions without a stored kind only knew about key combinations.
+        guard defaults.object(forKey: StorageKey.shortcutCode) != nil || storedDisplay != nil else {
             return .default
         }
+
         let keyCode = UInt16(defaults.integer(forKey: StorageKey.shortcutCode))
-        let rawModifiers = UInt(defaults.integer(forKey: StorageKey.shortcutModifiers))
-        let display = defaults.string(forKey: StorageKey.shortcutDisplay)
-            ?? KeyShortcut.default.display
-        return KeyShortcut(
+        return .combination(
             keyCode: keyCode,
-            modifiers: NSEvent.ModifierFlags(rawValue: rawModifiers),
-            display: display
+            modifiers: modifiers,
+            display: storedDisplay ?? legacyDefaultShortcutDisplay
         )
     }
 
