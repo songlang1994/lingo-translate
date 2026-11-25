@@ -36,13 +36,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setUpStatusItem()
         setUpMenu()
 
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(applicationDidResignActive),
-            name: NSApplication.didResignActiveNotification,
-            object: nil
-        )
-
         hotKeyFailureObserver = NotificationCenter.default.addObserver(
             forName: .hotKeyRegistrationFailed,
             object: nil,
@@ -88,10 +81,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let hotKeyFailureObserver {
             NotificationCenter.default.removeObserver(hotKeyFailureObserver)
         }
-    }
-
-    @objc private func applicationDidResignActive() {
-        panelController.hide(returnFocus: false)
     }
 
     @objc private func openSettings() {
