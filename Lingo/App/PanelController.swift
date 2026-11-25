@@ -10,10 +10,11 @@ final class TranslationPanel: NSPanel {
 final class PanelController {
     let panel: TranslationPanel
 
+    var isVisible: Bool { panel.isVisible }
+
     private let model: TranslatorModel
     private var escapeMonitor: Any?
     private var previousApp: NSRunningApplication?
-    private(set) var shownAt: Date?
 
     init(model: TranslatorModel, openSettings: @escaping () -> Void) {
         self.model = model
@@ -33,7 +34,7 @@ final class PanelController {
         panel.isFloatingPanel = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isMovableByWindowBackground = true
-        panel.animationBehavior = .utilityWindow
+        panel.animationBehavior = .none
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.backgroundColor = .clear
@@ -80,7 +81,10 @@ final class PanelController {
     }
 
     func show() {
-        previousApp = NSWorkspace.shared.frontmostApplication
+        if let frontmost = NSWorkspace.shared.frontmostApplication,
+           frontmost != NSRunningApplication.current {
+            previousApp = frontmost
+        }
 
         if let screen = NSScreen.main {
             let visible = screen.visibleFrame
@@ -97,7 +101,6 @@ final class PanelController {
 
         NSApp.activate()
         panel.makeKeyAndOrderFront(nil)
-        shownAt = Date()
         model.requestFocus()
     }
 
@@ -111,8 +114,8 @@ final class PanelController {
             } else {
                 NSApp.hide(nil)
             }
+            previousApp = nil
         }
-        previousApp = nil
     }
 
     private func handleKeyDown(_ event: NSEvent) -> NSEvent? {

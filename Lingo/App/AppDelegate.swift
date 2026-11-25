@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKeyManager: HotKeyManager!
     private var statusItem: NSStatusItem!
     private var hotKeyFailureObserver: NSObjectProtocol?
+    private var panelRestoresAfterSettings = false
+    private var isTerminating = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         settings = AppSettings()
@@ -17,10 +19,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow = SettingsWindowController(settings: settings) { [weak self] suspended in
             self?.hotKeyManager?.setSuspended(suspended)
         }
+        settingsWindow.onClose = { [weak self] in
+            guard let self, !self.isTerminating, self.panelRestoresAfterSettings else { return }
+            self.panelRestoresAfterSettings = false
+            self.panelController.show()
+        }
 
         panelController = PanelController(model: model) { [weak self] in
-            self?.panelController.hide(returnFocus: false)
-            self?.settingsWindow.show()
+            self?.openSettings()
         }
 
         hotKeyManager = HotKeyManager(settings: settings) { [weak self] in
@@ -72,6 +78,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        isTerminating = true
+        return .terminateNow
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         NotificationCenter.default.removeObserver(self)
         if let hotKeyFailureObserver {
@@ -80,12 +91,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func applicationDidResignActive() {
-        let visibleFor = Date().timeIntervalSince(panelController.shownAt ?? .distantPast)
-        guard visibleFor > 0.4 else { return }
         panelController.hide(returnFocus: false)
     }
 
     @objc private func openSettings() {
+        panelRestoresAfterSettings = panelController.isVisible
         panelController.hide(returnFocus: false)
         settingsWindow.show()
     }

@@ -2,15 +2,17 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class SettingsWindowController {
+final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private var hasBeenPositioned = false
     private let settings: AppSettings
     private let suspendHotKey: (Bool) -> Void
+    var onClose: (() -> Void)?
 
     init(settings: AppSettings, suspendHotKey: @escaping (Bool) -> Void) {
         self.settings = settings
         self.suspendHotKey = suspendHotKey
+        super.init()
     }
 
     var isVisible: Bool {
@@ -26,6 +28,7 @@ final class SettingsWindowController {
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
             window.isRestorable = false
+            window.delegate = self
             window.setContentSize(NSSize(width: 460, height: 252))
             self.window = window
         }
@@ -45,5 +48,9 @@ final class SettingsWindowController {
 
     func close() {
         window?.close()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        onClose?()
     }
 }
