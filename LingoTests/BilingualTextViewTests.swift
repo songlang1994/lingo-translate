@@ -132,6 +132,37 @@ final class BilingualTextViewInteractionTests: XCTestCase {
         XCTAssertNil(view.segmentIndex(at: NSPoint(x: 20, y: 290), inSource: false))
     }
 
+    func testSelectionStartClearsTheHighlightBeforeTheDragEnds() {
+        let (view, _) = makeView()
+        var cleared = 0
+        view.onSelectSegment = { index in
+            if index == nil { cleared += 1 }
+        }
+        view.update(input: lines.joined(separator: "\n"), segments: segments, highlightedSegment: 1, isTranslating: false, focusToken: 0)
+        view.layoutSubtreeIfNeeded()
+        XCTAssertNotNil(view.sourceView.highlightRange)
+        XCTAssertNotNil(view.translationView.highlightRange)
+
+        // Mid-drag: the selection is still growing, and the highlight is
+        // already gone from both columns.
+        view.sourceView.setSelectedRanges([NSValue(range: NSRange(location: 0, length: 5))], affinity: .downstream, stillSelecting: true)
+        XCTAssertNil(view.sourceView.highlightRange)
+        XCTAssertNil(view.translationView.highlightRange)
+        XCTAssertEqual(cleared, 1)
+
+        // A plain caret move is not a text selection.
+        view.sourceView.setSelectedRanges([NSValue(range: NSRange(location: 3, length: 0))], affinity: .downstream, stillSelecting: false)
+        XCTAssertEqual(cleared, 1)
+
+        // Selecting translation text clears it as well.
+        view.update(input: lines.joined(separator: "\n"), segments: segments, highlightedSegment: 2, isTranslating: false, focusToken: 0)
+        XCTAssertNotNil(view.translationView.highlightRange)
+        view.translationView.setSelectedRanges([NSValue(range: NSRange(location: 0, length: 2))], affinity: .downstream, stillSelecting: true)
+        XCTAssertNil(view.sourceView.highlightRange)
+        XCTAssertNil(view.translationView.highlightRange)
+        XCTAssertEqual(cleared, 2)
+    }
+
     func testCompositionReachesTheModelOnlyWhenCommitted() {
         let (view, window) = makeView()
         var reported: [String] = []

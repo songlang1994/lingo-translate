@@ -78,6 +78,9 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
     private var contentBottom: CGFloat = 0
     private var focusToken: Int?
     private var revealSelectionAfterLayout = false
+    /// Programmatic text and selection changes must not look like the user
+    /// selecting text.
+    private var isApplyingTextChange = false
 
     // Following the streaming output.
     private let followTolerance: CGFloat = 24
@@ -110,6 +113,9 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
 
         sourceView.onMouseDown = { [weak self] point in self?.handleClick(at: point, inSource: true) }
         translationView.onMouseDown = { [weak self] point in self?.handleClick(at: point, inSource: false) }
+        for view in [sourceView, translationView] {
+            view.onSelectionStart = { [weak self] in self?.selectionDidStart() }
+        }
 
         observeScrolling()
     }
@@ -134,7 +140,9 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
     ) {
         // Programmatic edits (prefill, swap). Never interrupt an IME composition.
         if sourceView.string != input, !sourceView.hasMarkedText() {
+            isApplyingTextChange = true
             sourceView.replaceAllText(with: input)
+            isApplyingTextChange = false
             setNeedsAlignment()
         }
 
@@ -197,10 +205,12 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
         translationRanges = ranges
         // Keep the selection when only the streaming tail changed.
         let selection = translationView.selectedRange()
+        isApplyingTextChange = true
         translationView.textStorage?.setAttributedString(text)
         if NSMaxRange(selection) <= text.length {
             translationView.setSelectedRange(selection)
         }
+        isApplyingTextChange = false
         updateHighlight()
         setNeedsAlignment()
     }
@@ -214,6 +224,18 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
         toAttributes newTypingAttributes: [NSAttributedString.Key: Any] = [:]
     ) -> [NSAttributedString.Key: Any] {
         SegmentTextView.sourceAttributes
+    }
+
+    /// A text selection takes over the emphasis, so the segment highlight
+    /// steps aside as soon as the selection begins, mid-drag included.
+    private func selectionDidStart() {
+        guard !isApplyingTextChange, highlightedSegment != nil else { return }
+        // Clear the drawn highlight right away: SwiftUI's state update is not
+        // rendered until AppKit's drag-tracking loop returns.
+        sourceView.highlightRange = nil
+        translationView.highlightRange = nil
+        highlightedSegment = nil
+        onSelectSegment?(nil)
     }
 
     func textDidChange(_ notification: Notification) {
@@ -472,14 +494,14 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
 
     static let sourceHighlight = NSColor(name: nil) { appearance in
         appearance.isDark
-            ? NSColor(srgbRed: 0.42, green: 0.62, blue: 1.0, alpha: 0.40)
-            : NSColor(srgbRed: 0.62, green: 0.78, blue: 1.0, alpha: 0.45)
+            ? NSColor(srgbRed: 0.42, green: 0.62, blue: 1.0, alpha: 0.27)
+            : NSColor(srgbRed: 0.42, green: 0.62, blue: 1.0, alpha: 0.21)
     }
 
     static let translationHighlight = NSColor(name: nil) { appearance in
         appearance.isDark
-            ? NSColor(srgbRed: 1.0, green: 0.76, blue: 0.87, alpha: 0.58)
-            : NSColor(srgbRed: 1.0, green: 0.73, blue: 0.82, alpha: 0.6)
+            ? NSColor(srgbRed: 1.0, green: 0.62, blue: 0.78, alpha: 0.27)
+            : NSColor(srgbRed: 1.0, green: 0.62, blue: 0.74, alpha: 0.21)
     }
 }
 
@@ -553,6 +575,19 @@ final class SegmentTextView: NSTextView {
         didSet {
             if highlightRange != oldValue { needsDisplay = true }
         }
+    }
+
+    /// Called when the user starts selecting text, including while a
+    /// selection drag is still in progress.
+    var onSelectionStart: (() -> Void)?
+
+    /// The primitive AppKit uses for every selection change, so a drag is
+    /// reported while it starts rather than after the mouse comes up.
+    override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
+        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+        // Marked text is an IME composition, not the user selecting text.
+        guard !hasMarkedText(), ranges.contains(where: { $0.rangeValue.length > 0 }) else { return }
+        onSelectionStart?()
     }
 
     /// TextKit 1 is required for `NSLayoutManagerDelegate` paragraph spacing.

@@ -90,16 +90,18 @@ final class TranslatorModel: ObservableObject {
 
     // MARK: - Highlight
 
-    /// Highlights both columns for one segment. Blank segments cannot be highlighted.
+    /// Toggles the highlight of both columns for one segment, so clicking the
+    /// highlighted segment again clears it. Blank segments cannot be highlighted.
     func highlightSegment(at index: Int?) {
         guard let index, !isBlankSegment(index) else {
-            highlightedSegment = nil
+            clearHighlight()
             return
         }
-        highlightedSegment = index
+        highlightedSegment = index == highlightedSegment ? nil : index
     }
 
     func clearHighlight() {
+        guard highlightedSegment != nil else { return }
         highlightedSegment = nil
     }
 
