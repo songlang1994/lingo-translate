@@ -68,6 +68,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.panelController.show()
             }
         }
+
+        if CommandLine.arguments.contains("--show-settings") {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                self?.openSettings()
+            }
+        }
         #endif
     }
 
