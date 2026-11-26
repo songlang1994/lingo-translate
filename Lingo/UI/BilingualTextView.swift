@@ -25,6 +25,12 @@ func alignmentPadding(left: [CGFloat], right: [CGFloat]) -> (left: [CGFloat], ri
     return (padLeft, padRight)
 }
 
+/// Vertical extent of a highlight, in text view coordinates.
+struct HighlightSpan: Equatable {
+    var top: CGFloat
+    var bottom: CGFloat
+}
+
 /// Source and translation side by side as two TextKit 1 text views. Each
 /// segment starts at the same height in both columns; the gap is filled with
 /// layout-time paragraph spacing, so neither text is modified.
@@ -61,9 +67,9 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
     static let gutter: CGFloat = 14
     static let topPadding: CGFloat = 12
     static let bottomPadding: CGFloat = 14
-    /// Vertical room for the highlight above and below the text. Horizontally
-    /// the highlight fills the text column edge to edge.
-    static let highlightInset = NSSize(width: 0, height: 3)
+    /// Room the highlight adds around the text: above and below it, and on
+    /// both sides of the text column.
+    static let highlightInset = NSSize(width: 8, height: 3)
 
     private let document = BilingualDocumentView()
     let sourceView = SegmentTextView.make(editable: true)
@@ -296,6 +302,8 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
             document.setFrameSize(size)
         }
 
+        updateHighlightSpan()
+
         if revealSelectionAfterLayout {
             revealSelectionAfterLayout = false
             if window?.firstResponder === sourceView {
@@ -402,6 +410,8 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
         guard let index = highlightedSegment, segments.indices.contains(index) else {
             sourceView.highlightRange = nil
             translationView.highlightRange = nil
+            sourceView.highlightSpan = nil
+            translationView.highlightSpan = nil
             return
         }
 
@@ -415,6 +425,32 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
             sourceView.highlightRange = nil
         }
         translationView.highlightRange = index < translationRanges.count ? translationRanges[index] : nil
+        // The ranges may still be laid out at an old width; start from each
+        // side's own measurement and let the next layout pass agree.
+        sourceView.highlightSpan = nil
+        translationView.highlightSpan = nil
+        updateHighlightSpan()
+    }
+
+    /// Both columns draw the same segment, so the band they fill is the union
+    /// of their text extents: the paragraph styles differ (the translation has
+    /// extra line spacing), and matching heights keep the two sides aligned.
+    private func updateHighlightSpan() {
+        let sourceSpan = sourceView.highlightRange.flatMap { sourceView.textSpan(for: $0) }
+        let translationSpan = translationView.highlightRange.flatMap { translationView.textSpan(for: $0) }
+        let span: HighlightSpan?
+        switch (sourceSpan, translationSpan) {
+        case let (source?, translation?):
+            span = HighlightSpan(top: min(source.top, translation.top), bottom: max(source.bottom, translation.bottom))
+        case let (source?, nil):
+            span = source
+        case let (nil, translation?):
+            span = translation
+        case (nil, nil):
+            span = nil
+        }
+        sourceView.highlightSpan = sourceSpan == nil ? nil : span
+        translationView.highlightSpan = translationSpan == nil ? nil : span
     }
 
     private func handleClick(at point: NSPoint, inSource: Bool) {
@@ -572,6 +608,13 @@ final class SegmentTextView: NSTextView {
     var onMouseDown: ((NSPoint) -> Void)?
     var placeholder: String?
     var highlightColor: NSColor = .clear
+    /// Vertical extent both columns agree on, so a segment is highlighted
+    /// identically on both sides even when their line spacing differs.
+    var highlightSpan: HighlightSpan? {
+        didSet {
+            if highlightSpan != oldValue { needsDisplay = true }
+        }
+    }
     var highlightRange: NSRange? {
         didSet {
             if highlightRange != oldValue { needsDisplay = true }
@@ -686,9 +729,23 @@ final class SegmentTextView: NSTextView {
         return manager.lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil).minY + textContainerOrigin.y
     }
 
-    /// The full column width, from the top of the segment's first line to the
-    /// bottom of its last line, grown vertically by the highlight inset.
+    /// The whole text view, from the top of the segment's first line to the
+    /// bottom of its last line, grown by the highlight inset on every side.
+    /// Uses the shared span when both columns have agreed on one.
     func highlightBounds(for range: NSRange) -> NSRect? {
+        guard let span = highlightSpan ?? textSpan(for: range) else { return nil }
+        let inset = BilingualScrollView.highlightInset
+        return NSRect(
+            x: 0,
+            y: span.top - inset.height,
+            width: bounds.width,
+            height: span.bottom - span.top + inset.height * 2
+        )
+    }
+
+    /// Vertical extent of the range's lines, in view coordinates, without the
+    /// highlight inset.
+    func textSpan(for range: NSRange) -> HighlightSpan? {
         guard let manager = layoutManager else { return nil }
         let glyphCount = manager.numberOfGlyphs
         let glyphRange = manager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
@@ -711,13 +768,7 @@ final class SegmentTextView: NSTextView {
         guard top <= bottom else { return nil }
 
         let origin = textContainerOrigin
-        let inset = BilingualScrollView.highlightInset
-        return NSRect(
-            x: 0,
-            y: origin.y + top - inset.height,
-            width: bounds.width,
-            height: bottom - top + inset.height * 2
-        )
+        return HighlightSpan(top: origin.y + top, bottom: origin.y + bottom)
     }
 }
 

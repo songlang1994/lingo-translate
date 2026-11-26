@@ -163,17 +163,55 @@ final class BilingualTextViewInteractionTests: XCTestCase {
         XCTAssertEqual(cleared, 2)
     }
 
-    func testHighlightFillsTheTextColumnWidth() throws {
+    func testHighlightPadsTheTextColumnHorizontally() throws {
         let (view, _) = makeView()
         view.update(input: lines.joined(separator: "\n"), segments: segments, highlightedSegment: 1, isTranslating: false, focusToken: 0)
 
-        let range = try XCTUnwrap(view.sourceView.highlightRange)
-        let rect = try XCTUnwrap(view.sourceView.highlightBounds(for: range))
-        let container = try XCTUnwrap(view.sourceView.textContainer)
+        let textView = view.sourceView
+        let range = try XCTUnwrap(textView.highlightRange)
+        let rect = try XCTUnwrap(textView.highlightBounds(for: range))
+        let container = try XCTUnwrap(textView.textContainer)
+        let padding = BilingualScrollView.highlightInset.width
 
+        XCTAssertGreaterThan(padding, 0)
         XCTAssertEqual(rect.minX, 0, accuracy: 0.5)
-        XCTAssertEqual(rect.width, container.size.width, accuracy: 0.5)
-        XCTAssertEqual(rect.width, view.sourceView.bounds.width, accuracy: 0.5)
+        XCTAssertEqual(rect.width, textView.bounds.width, accuracy: 0.5)
+        // The band is the text column plus the padding on both sides.
+        XCTAssertEqual(rect.width, container.size.width + padding * 2, accuracy: 0.5)
+        XCTAssertEqual(textView.textContainerOrigin.x, padding, accuracy: 0.5)
+    }
+
+    func testHighlightKeepsTextOutOfThePadding() throws {
+        let (view, _) = makeView()
+        view.update(input: lines.joined(separator: "\n"), segments: segments, highlightedSegment: 1, isTranslating: false, focusToken: 0)
+
+        let textView = view.sourceView
+        let container = try XCTUnwrap(textView.textContainer)
+        // Wrapping is unchanged by the padding: the text column is as wide as
+        // it was before the band grew into the gutters.
+        XCTAssertEqual(container.size.width, view.bounds.width / 2 - BilingualScrollView.gutter * 2, accuracy: 0.5)
+        XCTAssertEqual(textView.frame.minX, BilingualScrollView.gutter - BilingualScrollView.highlightInset.width, accuracy: 0.5)
+    }
+
+    func testHighlightIsTheSameHeightOnBothSides() throws {
+        let (view, _) = makeView()
+        // The translation style has extra line spacing, so a wrapped segment
+        // measured per side would be taller on the right.
+        var segments = self.segments
+        segments[1].text = String(repeating: "grep 工具搜索任何给定的输入文件，", count: 5)
+        view.update(input: lines.joined(separator: "\n"), segments: segments, highlightedSegment: 1, isTranslating: false, focusToken: 0)
+        view.layoutSubtreeIfNeeded()
+
+        let sourceRange = try XCTUnwrap(view.sourceView.highlightRange)
+        let translationRange = try XCTUnwrap(view.translationView.highlightRange)
+        let sourceRect = try XCTUnwrap(view.sourceView.highlightBounds(for: sourceRange))
+        let translationRect = try XCTUnwrap(view.translationView.highlightBounds(for: translationRange))
+
+        XCTAssertGreaterThan(try XCTUnwrap(view.translationView.textSpan(for: translationRange)).bottom,
+                             try XCTUnwrap(view.sourceView.textSpan(for: sourceRange)).bottom,
+                             "the fixture must reproduce the line spacing difference")
+        XCTAssertEqual(translationRect.minY, sourceRect.minY, accuracy: 0.5)
+        XCTAssertEqual(translationRect.height, sourceRect.height, accuracy: 0.5)
     }
 
     func testHighlightIsASquareFillingTheColumn() throws {
@@ -196,7 +234,7 @@ final class BilingualTextViewInteractionTests: XCTestCase {
 
         // The very corner of the band is painted: no rounded corner.
         XCTAssertGreaterThan(alpha(x: 1, top: rect.minY + 1), 0.05)
-        // The band reaches both edges of the column.
+        // The band reaches both edges of the padded column.
         XCTAssertGreaterThan(alpha(x: 1, top: rect.midY), 0.05)
         XCTAssertGreaterThan(alpha(x: textView.bounds.width - 1, top: rect.midY), 0.05)
         // Above the band nothing is painted.
