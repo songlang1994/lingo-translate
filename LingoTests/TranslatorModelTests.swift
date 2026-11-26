@@ -227,6 +227,19 @@ final class TranslatorModelTests: XCTestCase {
         XCTAssertEqual(model.highlightedSegment, 0)
     }
 
+    func testPrefillWithTheSameTextKeepsTheCurrentTranslation() async {
+        let client = ScriptedClient([.reply("<s lines=\"1\">你好。</s>")])
+        let model = await translate("Hello.", client: client)
+        model.highlightSegment(at: 0)
+
+        model.prefill("Hello.")
+
+        XCTAssertEqual(client.requests.count, 1)
+        XCTAssertFalse(model.isTranslating)
+        XCTAssertEqual(model.output, "你好。")
+        XCTAssertEqual(model.highlightedSegment, 0)
+    }
+
     func testSwapRightAfterAnEditRetranslatesInsteadOfUsingStaleSegments() async {
         let client = ScriptedClient([.reply("<s lines=\"1\">你好。</s>"), .reply("<s lines=\"1\">x</s>")])
         let model = await translate("Hello.", client: client)

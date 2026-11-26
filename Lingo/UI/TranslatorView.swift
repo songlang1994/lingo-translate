@@ -15,6 +15,7 @@ struct TranslatorView: View {
                 PanelBackground()
                 Color(nsColor: .windowBackgroundColor).opacity(0.55)
             }
+            .allowsHitTesting(false)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -78,6 +79,7 @@ struct TranslatorView: View {
         .padding(.horizontal, 12)
         .padding(.top, 10)
         .padding(.bottom, 6)
+        .background(WindowDragArea())
         .animation(.easeInOut(duration: 0.15), value: model.isTranslating)
     }
 
@@ -286,4 +288,23 @@ struct PanelBackground: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+}
+
+/// An empty header area that moves the window when dragged. SwiftUI controls
+/// keep their own clicks; this fills the free space between them and starts a
+/// window drag directly, which works for the non-activating panel too.
+struct WindowDragArea: NSViewRepresentable {
+    func makeNSView(context: Context) -> WindowDragView {
+        WindowDragView()
+    }
+
+    func updateNSView(_ nsView: WindowDragView, context: Context) {}
+}
+
+final class WindowDragView: NSView {
+    override var mouseDownCanMoveWindow: Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.performDrag(with: event)
+    }
 }

@@ -27,7 +27,7 @@ struct SettingsView: View {
             Text("While recording, press a key combination or double-tap ⌃ ⌥ ⌘ ⇧.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            if settings.shortcut.isDoubleTap && !accessibilityGranted {
+            if !accessibilityGranted {
                 accessibilityWarning
             }
         }
@@ -45,7 +45,7 @@ struct SettingsView: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.yellow)
-            Text("Double-tap shortcuts require Accessibility access.")
+            Text("Double-tap shortcuts and auto-filling the selected text need Accessibility access.")
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
             Button("Open System Settings") {

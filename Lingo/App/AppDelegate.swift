@@ -22,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow.onClose = { [weak self] in
             guard let self, !self.isTerminating, self.panelRestoresAfterSettings else { return }
             self.panelRestoresAfterSettings = false
-            self.panelController.show()
+            self.panelController.show(fillSelection: false)
         }
 
         panelController = PanelController(model: model) { [weak self] in
@@ -119,13 +119,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showStatusMenu() {
         let menu = NSMenu()
 
-        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: "")
         settingsItem.target = self
         menu.addItem(settingsItem)
 
         menu.addItem(.separator())
 
-        let quitItem = NSMenuItem(title: "Quit Lingo Translate", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quit Lingo Translate", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         menu.addItem(quitItem)
 
         statusItem.menu = menu
@@ -138,11 +138,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let applicationItem = NSMenuItem()
         let applicationMenu = NSMenu()
-        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: "")
         settingsItem.target = self
         applicationMenu.addItem(settingsItem)
         applicationMenu.addItem(.separator())
-        applicationMenu.addItem(withTitle: "Quit Lingo Translate", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        applicationMenu.addItem(withTitle: "Quit Lingo Translate", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         applicationItem.submenu = applicationMenu
 
         let editItem = NSMenuItem()

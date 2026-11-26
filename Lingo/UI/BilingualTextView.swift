@@ -61,8 +61,9 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
     static let gutter: CGFloat = 14
     static let topPadding: CGFloat = 12
     static let bottomPadding: CGFloat = 14
-    /// Room for the rounded highlight around the text, outside the text column.
-    static let highlightInset = NSSize(width: 6, height: 3)
+    /// Vertical room for the highlight above and below the text. Horizontally
+    /// the highlight fills the text column edge to edge.
+    static let highlightInset = NSSize(width: 0, height: 3)
 
     private let document = BilingualDocumentView()
     let sourceView = SegmentTextView.make(editable: true)
@@ -667,7 +668,7 @@ final class SegmentTextView: NSTextView {
         // Drawn under the text; a background highlight is not limited to line rectangles.
         if let range = highlightRange, let bounds = highlightBounds(for: range) {
             highlightColor.setFill()
-            NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+            NSBezierPath(rect: bounds).fill()
         }
         super.draw(dirtyRect)
         guard string.isEmpty, let placeholder else { return }
@@ -686,8 +687,8 @@ final class SegmentTextView: NSTextView {
     }
 
     /// The full column width, from the top of the segment's first line to the
-    /// bottom of its last line, grown by the highlight inset.
-    private func highlightBounds(for range: NSRange) -> NSRect? {
+    /// bottom of its last line, grown vertically by the highlight inset.
+    func highlightBounds(for range: NSRange) -> NSRect? {
         guard let manager = layoutManager else { return nil }
         let glyphCount = manager.numberOfGlyphs
         let glyphRange = manager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)

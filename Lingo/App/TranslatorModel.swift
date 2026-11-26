@@ -69,6 +69,8 @@ final class TranslatorModel: ObservableObject {
     }
 
     func prefill(_ text: String) {
+        // Reopening the panel on the same selection must not reset the output.
+        guard text != input else { return }
         input = text
         validateHighlight()
         if trimmedInput.isEmpty {

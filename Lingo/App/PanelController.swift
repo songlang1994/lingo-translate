@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import SwiftUI
 
 final class TranslationPanel: NSPanel {
@@ -31,6 +32,12 @@ final class PanelController {
 
     /// The app macOS put in front before we fell back to activating ourselves.
     private var previouslyActiveApp: NSRunningApplication?
+    /// The app that was last frontmost before Lingo, with the moment Lingo took
+    /// the foreground. Clicking our status item activates the app, so the
+    /// selection has to come from this app when we are already frontmost.
+    private var lastExternalApp: NSRunningApplication?
+    private var lastExternalAppLeftAt: Date = .distantPast
+    private static let selectionSourceWindow: TimeInterval = 2
     /// True once we gave up on the non-activating route and activated Lingo.
     private var didActivate = false
     /// Right after showing, macOS may briefly grant key status and then take it
@@ -132,12 +139,17 @@ final class PanelController {
         }
     }
 
-    func show() {
+    func show(fillSelection: Bool = true) {
         cancelFocusChecks()
         didActivate = false
         focusSettlesAt = Date().addingTimeInterval(3.0)
-        previouslyActiveApp = NSWorkspace.shared.frontmostApplication.flatMap {
-            $0 == NSRunningApplication.current ? nil : $0
+
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        let sourceApp = frontmost.flatMap { $0 == NSRunningApplication.current ? nil : $0 } ?? recentExternalApp()
+        previouslyActiveApp = frontmost.flatMap { $0 == NSRunningApplication.current ? nil : $0 }
+        if fillSelection, let sourceApp {
+            // Must run while the other app still owns the selection.
+            fillSelectionFrom(sourceApp)
         }
 
         if let screen = NSScreen.main {
@@ -185,22 +197,50 @@ final class PanelController {
 
     // MARK: - Keyboard
 
+    enum KeyAction: Equatable {
+        case hide
+        case translate
+        case none
+    }
+
+    /// ⌘W and ⌘Q hide the panel instead of closing the window or quitting.
+    static func keyAction(for event: NSEvent) -> KeyAction {
+        if event.keyCode == 53 { return .hide }
+
+        let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        if modifiers == .command,
+           event.keyCode == UInt16(kVK_ANSI_W) || event.keyCode == UInt16(kVK_ANSI_Q) {
+            return .hide
+        }
+
+        if event.keyCode == 36 || event.keyCode == 76,
+           event.modifierFlags.contains(.command) {
+            return .translate
+        }
+
+        return .none
+    }
+
     private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
         guard panel.isKeyWindow else { return event }
 
-        if event.keyCode == 53 {
+        switch Self.keyAction(for: event) {
+        case .hide:
             hide()
             return nil
+        case .translate:
+            model.translateNow()
+            return nil
+        case .none:
+            return event
         }
+    }
 
-        if event.keyCode == 36 || event.keyCode == 76 {
-            if event.modifierFlags.contains(.command) {
-                model.translateNow()
-                return nil
-            }
-        }
+    // MARK: - Selection
 
-        return event
+    private func fillSelectionFrom(_ app: NSRunningApplication) {
+        guard let text = SelectedTextReader.selectedText(in: app) else { return }
+        model.prefill(text)
     }
 
     // MARK: - Dismissal
@@ -227,12 +267,24 @@ final class PanelController {
     }
 
     private func handleFrontmostAppChange(_ notification: Notification) {
-        guard panel.isVisible,
-              let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-              app != NSRunningApplication.current
-        else { return }
+        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+        if app == NSRunningApplication.current {
+            lastExternalAppLeftAt = Date()
+        } else {
+            lastExternalApp = app
+        }
+        guard panel.isVisible else { return }
         guard Date() >= focusSettlesAt else { return }
         hide(returnFocus: false)
+    }
+
+    /// The app that just lost the foreground to us, if it did so very recently.
+    private func recentExternalApp() -> NSRunningApplication? {
+        guard Date().timeIntervalSince(lastExternalAppLeftAt) <= Self.selectionSourceWindow,
+              let app = lastExternalApp,
+              !app.isTerminated
+        else { return nil }
+        return app
     }
 
     /// Losing key status while still on screen means either the user moved to

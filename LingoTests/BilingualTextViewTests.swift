@@ -163,6 +163,46 @@ final class BilingualTextViewInteractionTests: XCTestCase {
         XCTAssertEqual(cleared, 2)
     }
 
+    func testHighlightFillsTheTextColumnWidth() throws {
+        let (view, _) = makeView()
+        view.update(input: lines.joined(separator: "\n"), segments: segments, highlightedSegment: 1, isTranslating: false, focusToken: 0)
+
+        let range = try XCTUnwrap(view.sourceView.highlightRange)
+        let rect = try XCTUnwrap(view.sourceView.highlightBounds(for: range))
+        let container = try XCTUnwrap(view.sourceView.textContainer)
+
+        XCTAssertEqual(rect.minX, 0, accuracy: 0.5)
+        XCTAssertEqual(rect.width, container.size.width, accuracy: 0.5)
+        XCTAssertEqual(rect.width, view.sourceView.bounds.width, accuracy: 0.5)
+    }
+
+    func testHighlightIsASquareFillingTheColumn() throws {
+        let (view, _) = makeView()
+        view.update(input: lines.joined(separator: "\n"), segments: segments, highlightedSegment: 1, isTranslating: false, focusToken: 0)
+        view.layoutSubtreeIfNeeded()
+
+        let textView = view.sourceView
+        let range = try XCTUnwrap(textView.highlightRange)
+        let rect = try XCTUnwrap(textView.highlightBounds(for: range))
+        let rep = try XCTUnwrap(textView.bitmapImageRepForCachingDisplay(in: textView.bounds))
+        textView.cacheDisplay(in: textView.bounds, to: rep)
+
+        let scale = CGFloat(rep.pixelsWide) / textView.bounds.width
+        func alpha(x: CGFloat, top: CGFloat) -> CGFloat {
+            let px = min(max(Int(x * scale), 0), rep.pixelsWide - 1)
+            let py = min(max(Int(top * scale), 0), rep.pixelsHigh - 1)
+            return rep.colorAt(x: px, y: py)?.alphaComponent ?? 0
+        }
+
+        // The very corner of the band is painted: no rounded corner.
+        XCTAssertGreaterThan(alpha(x: 1, top: rect.minY + 1), 0.05)
+        // The band reaches both edges of the column.
+        XCTAssertGreaterThan(alpha(x: 1, top: rect.midY), 0.05)
+        XCTAssertGreaterThan(alpha(x: textView.bounds.width - 1, top: rect.midY), 0.05)
+        // Above the band nothing is painted.
+        XCTAssertLessThan(alpha(x: 1, top: 0.5), 0.05)
+    }
+
     func testCompositionReachesTheModelOnlyWhenCommitted() {
         let (view, window) = makeView()
         var reported: [String] = []
