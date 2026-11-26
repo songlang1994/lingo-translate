@@ -13,6 +13,14 @@ struct SettingsView: View {
             TextField("Endpoint", text: $settings.endpoint, prompt: Text("https://api.openai.com/v1/responses"))
             TextField("Model", text: $settings.model, prompt: Text("gpt-4.1-mini"))
             SecureField("API key", text: $settings.apiKey)
+            Picker("Reasoning effort", selection: $settings.reasoningEffort) {
+                ForEach(ReasoningEffort.allCases) { effort in
+                    Text(effort.title).tag(effort)
+                }
+            }
+            Text("None disables reasoning. Default omits the field and lets the server decide.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             LabeledContent("Shortcut") {
                 ShortcutRecorder(shortcut: $settings.shortcut, suspendHotKey: suspendHotKey)
             }
@@ -24,7 +32,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 460, height: 252)
+        .frame(width: 460, height: 312)
         .onAppear {
             refreshAccessibilityStatus()
         }

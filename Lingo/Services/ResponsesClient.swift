@@ -5,6 +5,11 @@ private struct RequestBody: Encodable {
     let instructions: String
     let input: String
     var stream: Bool
+    var reasoning: Reasoning?
+
+    struct Reasoning: Encodable {
+        let effort: String
+    }
 }
 
 enum ResponsesError: LocalizedError {
@@ -47,11 +52,12 @@ final class ResponsesClient {
             throw ResponsesError.notConfigured
         }
 
-        let body = RequestBody(
+        var body = RequestBody(
             model: configuration.model.trimmingCharacters(in: .whitespacesAndNewlines),
             instructions: Prompt.instructions(source: source, target: target),
             input: text,
-            stream: true
+            stream: true,
+            reasoning: configuration.reasoningEffort.requestValue.map(RequestBody.Reasoning.init(effort:))
         )
 
         do {
@@ -60,6 +66,13 @@ final class ResponsesClient {
             var fallback = body
             fallback.stream = false
             return try await send(body: fallback, url: url, apiKey: configuration.apiKey)
+        } catch let error as ResponsesError {
+            // Models that do not support reasoning reject the field, so retry once without it.
+            guard case let .http(status, _) = error, status == 400, body.reasoning != nil else {
+                throw error
+            }
+            body.reasoning = nil
+            return try await stream(body: body, url: url, apiKey: configuration.apiKey, onDelta: onDelta)
         }
     }
 

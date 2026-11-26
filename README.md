@@ -28,15 +28,18 @@ make install      # 构建 Release 并复制到 /Applications
 
 ## 首次配置
 
-首次启动只显示设置窗口，填入以下三项即可使用：
+首次启动只显示设置窗口，填入以下内容即可使用：
 
 | 项目 | 说明 | 示例 |
 | --- | --- | --- |
 | Endpoint | Responses 风格接口地址，也可以只填服务基础地址 | `https://api.openai.com/v1/responses`、`https://api.deepseek.com` |
 | Model | 模型名称 | `gpt-4.1-mini` |
 | API key | 密钥，本地地址可留空 | `sk-...` |
+| Reasoning effort | 思考级别，默认 `None`（关闭思考） | `None`、`Low`、`Medium`、`High` |
 
-请求体为 `{ "model", "instructions", "input", "stream": true }`，认证使用 `Authorization: Bearer <API key>`。接口返回 `text/event-stream` 时解析 `response.output_text.delta` 事件；返回普通 JSON 时读取 `output_text` 或 `output[].content[].text`。
+请求体为 `{ "model", "instructions", "input", "stream": true, "reasoning": { "effort": "none" } }`（选择 `Default` 时省略 `reasoning`），认证使用 `Authorization: Bearer <API key>`。接口返回 `text/event-stream` 时解析 `response.output_text.delta` 事件；返回普通 JSON 时读取 `output_text` 或 `output[].content[].text`。
+
+`Reasoning effort` 直接映射到 Responses API 的 `reasoning.effort`：`None` 对应 `"none"`，即禁用思考；`Default` 不发送该字段，由服务端决定。若所选模型不支持该字段（返回 HTTP 400），客户端会自动去掉 `reasoning` 重试一次。
 
 Endpoint 会自动补全请求路径，不需要自己拼完整地址：
 

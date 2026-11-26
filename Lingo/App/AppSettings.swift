@@ -6,6 +6,7 @@ final class AppSettings: ObservableObject {
     private enum StorageKey {
         static let endpoint = "endpoint"
         static let model = "model"
+        static let reasoningEffort = "reasoningEffort"
         static let source = "sourceLanguage"
         static let target = "targetLanguage"
         static let shortcutKind = "shortcutKind"
@@ -21,6 +22,7 @@ final class AppSettings: ObservableObject {
 
     static let defaultEndpoint = "https://api.openai.com/v1/responses"
     static let defaultModel = "gpt-4.1-mini"
+    static let defaultReasoningEffort: ReasoningEffort = .none
 
     @Published var endpoint: String {
         didSet { defaults.set(endpoint, forKey: StorageKey.endpoint) }
@@ -28,6 +30,10 @@ final class AppSettings: ObservableObject {
 
     @Published var model: String {
         didSet { defaults.set(model, forKey: StorageKey.model) }
+    }
+
+    @Published var reasoningEffort: ReasoningEffort {
+        didSet { defaults.set(reasoningEffort.rawValue, forKey: StorageKey.reasoningEffort) }
     }
 
     @Published var apiKey: String {
@@ -64,6 +70,12 @@ final class AppSettings: ObservableObject {
     init() {
         endpoint = defaults.string(forKey: StorageKey.endpoint) ?? Self.defaultEndpoint
         model = defaults.string(forKey: StorageKey.model) ?? Self.defaultModel
+        if let stored = defaults.string(forKey: StorageKey.reasoningEffort),
+           let effort = ReasoningEffort(rawValue: stored) {
+            reasoningEffort = effort
+        } else {
+            reasoningEffort = Self.defaultReasoningEffort
+        }
         sourceCode = defaults.string(forKey: StorageKey.source) ?? Language.automatic.code
         let storedTarget = defaults.string(forKey: StorageKey.target)
         targetCode = (storedTarget == nil || storedTarget == Language.automatic.code)
@@ -74,7 +86,12 @@ final class AppSettings: ObservableObject {
     }
 
     var configuration: Configuration {
-        Configuration(endpoint: endpoint, apiKey: apiKey, model: model)
+        Configuration(
+            endpoint: endpoint,
+            apiKey: apiKey,
+            model: model,
+            reasoningEffort: reasoningEffort
+        )
     }
 
     var isReady: Bool {
