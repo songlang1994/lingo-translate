@@ -29,7 +29,17 @@ enum ResponsesError: LocalizedError {
     }
 }
 
-final class ResponsesClient {
+@MainActor
+protocol TranslationClient: AnyObject {
+    func complete(
+        instructions: String,
+        input: String,
+        configuration: Configuration,
+        onDelta: @escaping (String) -> Void
+    ) async throws -> String
+}
+
+final class ResponsesClient: TranslationClient {
     private let session: URLSession
 
     init() {
@@ -40,11 +50,11 @@ final class ResponsesClient {
         session = URLSession(configuration: configuration)
     }
 
+    /// Sends one request and returns the full reply text, streaming deltas to `onDelta`.
     @MainActor
-    func translate(
-        _ text: String,
-        from source: Language,
-        to target: Language,
+    func complete(
+        instructions: String,
+        input: String,
         configuration: Configuration,
         onDelta: @escaping (String) -> Void
     ) async throws -> String {
@@ -54,8 +64,8 @@ final class ResponsesClient {
 
         var body = RequestBody(
             model: configuration.model.trimmingCharacters(in: .whitespacesAndNewlines),
-            instructions: Prompt.instructions(source: source, target: target),
-            input: text,
+            instructions: instructions,
+            input: input,
             stream: true,
             reasoning: configuration.reasoningEffort.requestValue.map(RequestBody.Reasoning.init(effort:))
         )

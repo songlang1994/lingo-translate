@@ -5,10 +5,13 @@ CONFIG ?= Debug
 DERIVED = build
 BUNDLE = $(DERIVED)/Build/Products/$(CONFIG)/$(APP).app
 
-.PHONY: build run stop clean release install
+.PHONY: build test run stop clean release install
 
 build:
 	xcodebuild -project $(PROJECT).xcodeproj -scheme $(SCHEME) -configuration $(CONFIG) -derivedDataPath $(DERIVED) build
+
+test:
+	xcodebuild -project $(PROJECT).xcodeproj -scheme $(SCHEME) -configuration Debug -derivedDataPath $(DERIVED) test
 
 run: build
 	open "$(BUNDLE)"
