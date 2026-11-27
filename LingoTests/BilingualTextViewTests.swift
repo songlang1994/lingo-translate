@@ -364,7 +364,7 @@ final class BilingualTextViewInteractionTests: XCTestCase {
         XCTAssertEqual(view.contentView.bounds.minY, 0)
     }
 
-    func testTranslationStartsAtTheTopAndFollowsOnlyAfterTheUserScrollsDown() {
+    func testTranslationStartsAtTheTopAndKeepsTheUserScrollPosition() {
         let (view, _) = makeView()
         let long = (0..<40).map { "line \($0) of the source text" }
         var streamed: [TranslationSegment] = []
@@ -385,29 +385,24 @@ final class BilingualTextViewInteractionTests: XCTestCase {
             view.update(input: long.joined(separator: "\n"), segments: streamed, highlightedSegment: nil, isTranslating: true, focusToken: 0)
             view.layoutSubtreeIfNeeded()
         }
-        func isAtBottom() -> Bool {
-            let clip = view.contentView
-            return abs(clip.bounds.maxY - (view.documentView?.frame.height ?? 0)) < 1
-        }
 
         // Starting the translation returns to the top so the streamed output
         // is visible from its first line.
         stream(upTo: 1)
         XCTAssertEqual(view.contentView.bounds.minY, 0)
 
-        // Streaming does not drag the view to the bottom on its own.
+        // Streaming never moves the view on its own.
         stream(upTo: 20)
         XCTAssertEqual(view.contentView.bounds.minY, 0)
 
-        // Back near the bottom: following resumes.
-        NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification, object: view)
+        // The user's scroll position is kept while the output keeps arriving,
+        // including at the very bottom of the document.
         let limit = (view.documentView?.frame.height ?? 0) - view.contentView.bounds.height
-        view.contentView.scroll(to: NSPoint(x: 0, y: limit - 10))
+        view.contentView.scroll(to: NSPoint(x: 0, y: limit))
         view.reflectScrolledClipView(view.contentView)
-        NotificationCenter.default.post(name: NSScrollView.didEndLiveScrollNotification, object: view)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        let userOrigin = view.contentView.bounds.minY
         stream(upTo: 30)
-        XCTAssertTrue(isAtBottom())
+        XCTAssertEqual(view.contentView.bounds.minY, userOrigin)
 
         // Restarting the translation clears the output and returns to the top.
         view.update(input: long.joined(separator: "\n"), segments: [], highlightedSegment: nil, isTranslating: true, focusToken: 0)

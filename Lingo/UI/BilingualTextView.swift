@@ -97,16 +97,10 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
     /// selecting text.
     private var isApplyingTextChange = false
 
-    // Following the streaming output.
-    private let followTolerance: CGFloat = 24
     private var isTranslating = false
-    private var isFollowing = false
-    private var isLiveScrollTracking = false
-    private var needsFollowAfterLayout = false
     /// The next layout pass positions the view at the top of the document,
     /// once the pasted source has been measured.
     private var needsScrollToTop = false
-    private var observers: [NSObjectProtocol] = []
     /// Clearing the other column's selection must not look like the user
     /// selecting text there.
     private var isClearingOtherSelection = false
@@ -143,17 +137,11 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
                 self.selectionChanged(in: view)
             }
         }
-
-        observeScrolling()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
-    }
-
-    deinit {
-        observers.forEach(NotificationCenter.default.removeObserver)
     }
 
     // MARK: - Updates from the model
@@ -193,10 +181,10 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
         if isTranslating != self.isTranslating {
             self.isTranslating = isTranslating
             if isTranslating {
-                startFollowingAtTop()
+                startTranslationAtTop()
             }
         } else if restartedTranslation {
-            startFollowingAtTop()
+            startTranslationAtTop()
         }
 
         if focusToken != self.focusToken {
@@ -207,12 +195,9 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
 
     /// A new translation starts at the top of the document so the streamed
     /// output is visible from its first line, even when a long source was just
-    /// pasted. Following the tail stays off until the user scrolls to the
-    /// bottom themselves.
-    private func startFollowingAtTop() {
+    /// pasted. The scroll position stays where the user puts it afterwards.
+    private func startTranslationAtTop() {
         revealSelectionAfterLayout = false
-        needsFollowAfterLayout = false
-        isFollowing = false
         needsScrollToTop = true
         scrollToTop()
     }
@@ -262,7 +247,6 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
         }
         isApplyingTextChange = false
         updateHighlight()
-        needsFollowAfterLayout = true
         setNeedsAlignment()
     }
 
@@ -366,14 +350,8 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
 
         if needsScrollToTop {
             needsScrollToTop = false
-            needsFollowAfterLayout = false
             revealSelectionAfterLayout = false
             scrollToTop()
-        }
-
-        if needsFollowAfterLayout {
-            needsFollowAfterLayout = false
-            followToBottom()
         }
 
         if revealSelectionAfterLayout {
@@ -549,61 +527,13 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
         return bands.last(where: { $0.top <= y })?.segment
     }
 
-    // MARK: - Following the output
-
-    private func observeScrolling() {
-        let center = NotificationCenter.default
-        observers = [
-            center.addObserver(forName: NSScrollView.willStartLiveScrollNotification, object: self, queue: .main) { [weak self] _ in
-                guard let self else { return }
-                self.isLiveScrollTracking = true
-                self.isFollowing = false
-            },
-            center.addObserver(forName: NSScrollView.didLiveScrollNotification, object: self, queue: .main) { [weak self] _ in
-                guard let self else { return }
-                // Wait for the end of a gesture or thumb drag, otherwise a
-                // mid-drag check could re-pin the view and fight the user.
-                guard !self.isLiveScrollTracking else { return }
-                self.isFollowing = self.isScrolledToBottom()
-            },
-            center.addObserver(forName: NSScrollView.didEndLiveScrollNotification, object: self, queue: .main) { [weak self] _ in
-                guard let self else { return }
-                self.isLiveScrollTracking = false
-                // Let the scroll view settle before reading its geometry.
-                DispatchQueue.main.async {
-                    self.isFollowing = self.isScrolledToBottom()
-                }
-            },
-        ]
-
-        document.postsFrameChangedNotifications = true
-        observers.append(
-            center.addObserver(forName: NSView.frameDidChangeNotification, object: document, queue: .main) { [weak self] _ in
-                self?.followToBottom()
-            }
-        )
-    }
+    // MARK: - Scrolling
 
     private func scrollToTop() {
         let clipView = contentView
         guard clipView.bounds.origin.y != 0 else { return }
         clipView.scroll(to: NSPoint(x: clipView.bounds.origin.x, y: 0))
         reflectScrolledClipView(clipView)
-    }
-
-    private func followToBottom() {
-        guard isFollowing, isTranslating else { return }
-        let clipView = contentView
-        let target = max(0, document.bounds.height - clipView.bounds.height)
-        guard abs(clipView.bounds.origin.y - target) > 0.5 else { return }
-        clipView.scroll(to: NSPoint(x: clipView.bounds.origin.x, y: target))
-        reflectScrolledClipView(clipView)
-    }
-
-    private func isScrolledToBottom() -> Bool {
-        let clipView = contentView
-        let limit = max(0, document.bounds.height - clipView.bounds.height)
-        return abs(clipView.bounds.origin.y - limit) <= followTolerance
     }
 
     // MARK: - Colors
