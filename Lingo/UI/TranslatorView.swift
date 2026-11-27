@@ -28,7 +28,7 @@ struct TranslatorView: View {
     private var header: some View {
         HStack(spacing: 2) {
             LanguageMenu(
-                title: model.sourceLanguage.name,
+                title: model.sourceLanguage.nativeName,
                 options: Language.sourceOptions,
                 selection: model.sourceCode,
                 onSelect: model.selectSource
@@ -45,7 +45,7 @@ struct TranslatorView: View {
             .help("Swap languages")
 
             LanguageMenu(
-                title: model.targetLanguage.name,
+                title: model.targetLanguage.nativeName,
                 options: Language.all,
                 selection: model.targetCode,
                 onSelect: model.selectTarget
@@ -277,7 +277,7 @@ private struct LanguageRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                Text(language.name)
+                Text(language.nativeName)
                     .font(.system(size: 13))
                 Spacer(minLength: 6)
                 if isSelected {

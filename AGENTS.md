@@ -47,6 +47,7 @@ scripts/      icon generation script
 - Reading the selection from other apps and the double-tap modifier shortcut require Accessibility permission. Never request it at launch.
 - No App Sandbox; signed with an Apple Development certificate and not notarized.
 - UI strings and code comments are English; README is Chinese, AGENTS.md is English.
+- The language menus list each language by its endonym (`Language.nativeName`); model prompts keep using the English `Language.name`.
 
 ## Conventions and preferences
 
@@ -56,5 +57,5 @@ scripts/      icon generation script
 - Verify UI changes with the `ui-visual-check` skill using window-level screenshots only. Never capture the whole screen, and keep images in `/tmp`.
 - Do not script UI interaction (clicks, drags, gestures) to test behavior; synthetic events are slow and unreliable here. Ask the user to perform the interaction and report back instead.
 - `.env` holds local endpoint settings and is git-ignored. Do not commit it or print its secrets.
-- Commit messages: English imperative mood, capitalized, no prefix; the body explains why. Include `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`.
+- Commit messages: English imperative mood, capitalized, no prefix; the body explains why.
 - Documentation states facts; avoid inflated wording.

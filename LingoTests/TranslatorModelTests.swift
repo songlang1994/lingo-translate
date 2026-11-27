@@ -346,4 +346,17 @@ final class TranslatorModelTests: XCTestCase {
             "Next.",
         ])
     }
+
+    func testLanguageMenusUseNativeNamesWhilePromptsStayInEnglish() {
+        let source = Language.named("zh-Hans")
+        let target = Language.named("en")
+
+        XCTAssertEqual(source.nativeName, "简体中文")
+        XCTAssertEqual(target.nativeName, "English")
+
+        let prompt = Prompt.lineRangeInstructions(source: source, target: target)
+        XCTAssertTrue(prompt.contains("The source language is Chinese (Simplified)."))
+        XCTAssertTrue(prompt.contains("Translate the user's text into English."))
+        XCTAssertFalse(prompt.contains("简体中文"))
+    }
 }
