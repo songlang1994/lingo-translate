@@ -94,6 +94,7 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
     private var isTranslating = false
     private var isFollowing = true
     private var isLiveScrollTracking = false
+    private var needsFollowAfterLayout = false
     private var observers: [NSObjectProtocol] = []
 
     override init(frame frameRect: NSRect) {
@@ -167,6 +168,7 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
             self.isTranslating = isTranslating
             if isTranslating {
                 isFollowing = true
+                needsFollowAfterLayout = true
                 followToBottom()
             }
         }
@@ -219,6 +221,7 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
         }
         isApplyingTextChange = false
         updateHighlight()
+        needsFollowAfterLayout = true
         setNeedsAlignment()
     }
 
@@ -303,6 +306,11 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
         }
 
         updateHighlightSpan()
+
+        if needsFollowAfterLayout {
+            needsFollowAfterLayout = false
+            followToBottom()
+        }
 
         if revealSelectionAfterLayout {
             revealSelectionAfterLayout = false
@@ -433,8 +441,8 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
     }
 
     /// Both columns draw the same segment, so the band they fill is the union
-    /// of their text extents: the paragraph styles differ (the translation has
-    /// extra line spacing), and matching heights keep the two sides aligned.
+    /// of their text extents: one side may wrap to more lines than the other,
+    /// and matching heights keep the two sides aligned.
     private func updateHighlightSpan() {
         let sourceSpan = sourceView.highlightRange.flatMap { sourceView.textSpan(for: $0) }
         let translationSpan = translationView.highlightRange.flatMap { translationView.textSpan(for: $0) }
@@ -566,6 +574,20 @@ private final class PaddingLayoutDelegate: NSObject, NSLayoutManagerDelegate {
         guard !pads.isEmpty else { return 0 }
         return pads[layoutManager.characterIndexForGlyph(at: glyphIndex)] ?? 0
     }
+
+    /// TextKit puts all extra line-height space above the baseline; shift the
+    /// baseline up so text sits vertically centered inside the fixed line box.
+    func layoutManager(
+        _ layoutManager: NSLayoutManager,
+        shouldSetLineFragmentRect lineFragmentRect: UnsafeMutablePointer<NSRect>,
+        lineFragmentUsedRect: UnsafeMutablePointer<NSRect>,
+        baselineOffset: UnsafeMutablePointer<CGFloat>,
+        in textContainer: NSTextContainer,
+        forGlyphRange glyphRange: NSRange
+    ) -> Bool {
+        baselineOffset.pointee -= SegmentTextView.baselineCenterOffset
+        return true
+    }
 }
 
 private final class BilingualDocumentView: NSView {
@@ -587,14 +609,29 @@ private final class BilingualDocumentView: NSView {
 
 final class SegmentTextView: NSTextView {
     static let font = NSFont.systemFont(ofSize: 17)
+    static let lineHeight: CGFloat = 32
+    static let baselineCenterOffset: CGFloat = ((lineHeight - (font.ascender - font.descender)) / 2).rounded()
 
-    static let translationAttributes: [NSAttributedString.Key: Any] = {
+    static let paragraphStyle: NSParagraphStyle = {
         let style = NSMutableParagraphStyle()
-        style.lineSpacing = 3
-        return [.font: font, .foregroundColor: NSColor.labelColor, .paragraphStyle: style]
+        style.minimumLineHeight = lineHeight
+        style.maximumLineHeight = lineHeight
+        style.lineSpacing = 0
+        style.paragraphSpacing = 0
+        return style
     }()
 
-    static let sourceAttributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.labelColor]
+    static let translationAttributes: [NSAttributedString.Key: Any] = [
+        .font: font,
+        .foregroundColor: NSColor.labelColor,
+        .paragraphStyle: paragraphStyle
+    ]
+
+    static let sourceAttributes: [NSAttributedString.Key: Any] = [
+        .font: font,
+        .foregroundColor: NSColor.labelColor,
+        .paragraphStyle: paragraphStyle
+    ]
 
     static let failedAttributes: [NSAttributedString.Key: Any] = {
         var attributes = translationAttributes
@@ -668,10 +705,9 @@ final class SegmentTextView: NSTextView {
         view.isGrammarCheckingEnabled = false
         view.smartInsertDeleteEnabled = false
 
+        view.defaultParagraphStyle = paragraphStyle
         if editable {
             view.typingAttributes = sourceAttributes
-        } else {
-            view.defaultParagraphStyle = translationAttributes[.paragraphStyle] as? NSParagraphStyle
         }
         return view
     }
@@ -682,7 +718,7 @@ final class SegmentTextView: NSTextView {
         manager.ensureLayout(for: container)
         let used = manager.usedRect(for: container)
         let extra = manager.extraLineFragmentRect
-        return max(used.maxY, extra.isEmpty ? 0 : extra.maxY, Self.font.ascender - Self.font.descender)
+        return max(used.maxY, extra.isEmpty ? 0 : extra.maxY, Self.lineHeight)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -717,8 +753,13 @@ final class SegmentTextView: NSTextView {
         guard string.isEmpty, let placeholder else { return }
         let origin = textContainerOrigin
         (placeholder as NSString).draw(
-            at: NSPoint(x: origin.x, y: origin.y),
-            withAttributes: [.font: Self.font, .foregroundColor: NSColor.tertiaryLabelColor]
+            in: NSRect(x: origin.x, y: origin.y, width: max(bounds.width - origin.x * 2, 0), height: Self.lineHeight),
+            withAttributes: [
+                .font: Self.font,
+                .foregroundColor: NSColor.tertiaryLabelColor,
+                .paragraphStyle: Self.paragraphStyle,
+                .baselineOffset: Self.baselineCenterOffset
+            ]
         )
     }
 

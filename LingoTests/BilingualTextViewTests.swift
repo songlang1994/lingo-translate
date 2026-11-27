@@ -129,7 +129,7 @@ final class BilingualTextViewInteractionTests: XCTestCase {
 
         // The translation column shares the same bands.
         XCTAssertEqual(view.segmentIndex(at: sourcePoint(line: 2, in: view), inSource: false), 1)
-        XCTAssertNil(view.segmentIndex(at: NSPoint(x: 20, y: 290), inSource: false))
+        XCTAssertNil(view.segmentIndex(at: NSPoint(x: 20, y: view.sourceView.bounds.maxY + 10), inSource: false))
     }
 
     func testSelectionStartClearsTheHighlightBeforeTheDragEnds() {
@@ -195,10 +195,10 @@ final class BilingualTextViewInteractionTests: XCTestCase {
 
     func testHighlightIsTheSameHeightOnBothSides() throws {
         let (view, _) = makeView()
-        // The translation style has extra line spacing, so a wrapped segment
-        // measured per side would be taller on the right.
+        // A wrapped translation spanning more lines than the source makes the
+        // right column taller when measured on its own.
         var segments = self.segments
-        segments[1].text = String(repeating: "grep 工具搜索任何给定的输入文件，", count: 5)
+        segments[1].text = String(repeating: "grep 工具搜索任何给定的输入文件，", count: 7)
         view.update(input: lines.joined(separator: "\n"), segments: segments, highlightedSegment: 1, isTranslating: false, focusToken: 0)
         view.layoutSubtreeIfNeeded()
 
@@ -209,7 +209,7 @@ final class BilingualTextViewInteractionTests: XCTestCase {
 
         XCTAssertGreaterThan(try XCTUnwrap(view.translationView.textSpan(for: translationRange)).bottom,
                              try XCTUnwrap(view.sourceView.textSpan(for: sourceRange)).bottom,
-                             "the fixture must reproduce the line spacing difference")
+                             "the fixture must make the translation span taller than the source span")
         XCTAssertEqual(translationRect.minY, sourceRect.minY, accuracy: 0.5)
         XCTAssertEqual(translationRect.height, sourceRect.height, accuracy: 0.5)
     }
@@ -326,5 +326,33 @@ final class SourceFontTests: XCTestCase {
         let storage = try XCTUnwrap(view.sourceView.textStorage)
         let font = try XCTUnwrap(storage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
         XCTAssertEqual(font.fontName, SegmentTextView.font.fontName)
+    }
+
+    func testFixedLineHeightAndZeroSpacingInBothColumns() throws {
+        let view = BilingualScrollView(frame: NSRect(x: 0, y: 0, width: 640, height: 300))
+        let segments = [
+            TranslationSegment(lines: 0...1, text: "First line\n第二行", state: .done),
+        ]
+        view.update(input: "First line\n第二行", segments: segments, highlightedSegment: nil, isTranslating: false, focusToken: 0)
+        view.layoutSubtreeIfNeeded()
+
+        for textView in [view.sourceView, view.translationView] {
+            let storage = try XCTUnwrap(textView.textStorage)
+            let style = try XCTUnwrap(storage.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
+            XCTAssertEqual(style.minimumLineHeight, 32)
+            XCTAssertEqual(style.maximumLineHeight, 32)
+            XCTAssertEqual(style.lineSpacing, 0)
+            XCTAssertEqual(style.paragraphSpacing, 0)
+
+            let manager = try XCTUnwrap(textView.layoutManager)
+            var lineHeights: [CGFloat] = []
+            var baselineOffsets: [CGFloat] = []
+            manager.enumerateLineFragments(forGlyphRange: NSRange(location: 0, length: manager.numberOfGlyphs)) { rect, _, _, glyphRange, _ in
+                lineHeights.append(rect.height)
+                baselineOffsets.append(manager.location(forGlyphAt: glyphRange.location).y)
+            }
+            XCTAssertEqual(lineHeights, [32, 32])
+            XCTAssertEqual(baselineOffsets, [22, 22])
+        }
     }
 }
