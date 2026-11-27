@@ -59,7 +59,7 @@ Screen Recording permission is required by the terminal or editor that runs the 
 
 ## Clean up
 
-Images live under `/tmp`, and the Debug app keeps running after a capture. Quit it when the check is finished:
+Images live under `/tmp`. Leave the Debug app running when the task is done so the user can check the result; quit it only when the user asks, or when a later check needs a relaunch:
 
 ```bash
 pgrep -f "Lingo Translate"

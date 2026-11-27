@@ -46,15 +46,13 @@ scripts/      icon generation script
 - Settings live in UserDefaults; the API key lives in the login keychain (service is the bundle ID, account `api-key`). Never move it to UserDefaults or plain files.
 - Reading the selection from other apps and the double-tap modifier shortcut require Accessibility permission. Never request it at launch.
 - No App Sandbox; signed with an Apple Development certificate and not notarized.
-- UI strings and code comments are English; README is Chinese, AGENTS.md is English.
-- The language menus list each language by its endonym (`Language.nativeName`); model prompts keep using the English `Language.name`.
 
 ## Conventions and preferences
 
 - README targets human users: features, build, configuration, and usage only. Keep it concise, with no emoji and no marketing tone or AI-sounding phrasing.
 - Keep the implementation native; do not add third-party dependencies unless the user asks.
 - Update this file when translation flow, segmentation or alignment, shortcuts, permissions, build commands, or the directory layout change.
-- Verify UI changes with the `ui-visual-check` skill using window-level screenshots only. Never capture the whole screen, and keep images in `/tmp`.
+- Verify UI changes with the `ui-visual-check` skill using window-level screenshots only. Never capture the whole screen, and keep images in `/tmp`. Leave the app running when the task is done so the user can check it; quit it only when the user asks or a later check needs a relaunch.
 - Do not script UI interaction (clicks, drags, gestures) to test behavior; synthetic events are slow and unreliable here. Ask the user to perform the interaction and report back instead.
 - `.env` holds local endpoint settings and is git-ignored. Do not commit it or print its secrets.
 - Commit messages: English imperative mood, capitalized, no prefix; the body explains why.
