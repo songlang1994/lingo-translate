@@ -265,6 +265,24 @@ final class TranslatorModelTests: XCTestCase {
         XCTAssertEqual(model.highlightedSegment, 0)
     }
 
+    func testEditingTheSourceClearsAndDisablesTheHighlight() async {
+        let client = ScriptedClient([
+            .reply("<s lines=\"1\">描述</s>\n<s lines=\"2-3\">甲</s>\n<s lines=\"5-7\">乙</s>"),
+        ])
+        let model = await translate(man, client: client)
+        model.highlightSegment(at: 1)
+        XCTAssertEqual(model.highlightedSegment, 1)
+
+        model.updateInput(man + "\nmore")
+
+        XCTAssertFalse(model.isOutputCurrent)
+        XCTAssertNil(model.highlightedSegment)
+
+        // Stale output does not accept a highlight either.
+        model.highlightSegment(at: 0)
+        XCTAssertNil(model.highlightedSegment)
+    }
+
     func testPrefillWithTheSameTextKeepsTheCurrentTranslation() async {
         let client = ScriptedClient([.reply("<s lines=\"1\">你好。</s>")])
         let model = await translate("Hello.", client: client)
