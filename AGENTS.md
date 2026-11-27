@@ -2,7 +2,7 @@
 
 Lingo Translate is a macOS menu bar translation tool: a global shortcut opens a floating panel, sends the selected text to a Responses-style LLM endpoint, and shows the source and translation in two columns aligned paragraph by paragraph. Built with Swift + SwiftUI / AppKit, no third-party dependencies.
 
-**Update this file after every completed task**, touching only the entries that changed. Record facts that help an agent get oriented quickly, not implementation details or a changelog.
+**Update this file only when necessary** — when a task changes a fact recorded here (see the triggers under Conventions and preferences). Skip it otherwise; there is no need to touch this file after every task. When updating, touch only the entries that changed. Record facts that help an agent get oriented quickly, not implementation details or a changelog.
 
 ## Commands
 
