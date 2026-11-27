@@ -41,8 +41,9 @@ struct TranslatorView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.tertiary)
-            .help("Swap languages")
+            .foregroundStyle(model.canSwapLanguages ? Color.secondary : Color.secondary.opacity(0.35))
+            .disabled(!model.canSwapLanguages)
+            .help(model.canSwapLanguages ? "Swap languages" : "Select a source language to swap")
 
             LanguageMenu(
                 title: model.targetLanguage.nativeName,

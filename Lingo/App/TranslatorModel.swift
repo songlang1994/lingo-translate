@@ -50,6 +50,11 @@ final class TranslatorModel: ObservableObject {
     var sourceLanguage: Language { Language.named(sourceCode) }
     var targetLanguage: Language { Language.named(targetCode) }
 
+    /// A detected source has no fixed language, so there is nothing to swap.
+    var canSwapLanguages: Bool {
+        !sourceLanguage.isAutomatic && !targetLanguage.isAutomatic
+    }
+
     var output: String {
         Self.joinedOutput(segments, lines: requestLines).text
     }
@@ -176,16 +181,14 @@ final class TranslatorModel: ObservableObject {
     }
 
     func swapLanguages() {
-        let previousSource = Language.named(sourceCode)
-        let previousTarget = Language.named(targetCode)
+        guard canSwapLanguages else { return }
 
-        let newSource = previousTarget
-        var newTarget = previousSource.isAutomatic ? Language.defaultTarget : previousSource
+        let previousSource = sourceLanguage
+        let newSource = targetLanguage
+        var newTarget = previousSource
         if newTarget == newSource {
             newTarget = newSource.code == "en" ? Language.named("zh-Hans") : Language.named("en")
         }
-
-        guard !newSource.isAutomatic, !newTarget.isAutomatic else { return }
 
         let canSwapText = !isTranslating && !output.isEmpty && isOutputCurrent
 

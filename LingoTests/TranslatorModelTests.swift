@@ -314,6 +314,30 @@ final class TranslatorModelTests: XCTestCase {
         model.stopTranslation()
     }
 
+    func testSwapIsIgnoredWhileTheSourceLanguageIsDetected() async {
+        let settings = AppSettings()
+        let (source, target) = (settings.sourceCode, settings.targetCode)
+        defer { settings.sourceCode = source; settings.targetCode = target }
+
+        settings.sourceCode = Language.automatic.code
+        settings.targetCode = "zh-Hans"
+        let model = TranslatorModel(settings: settings, client: ScriptedClient([]))
+
+        XCTAssertTrue(model.sourceLanguage.isAutomatic)
+        XCTAssertFalse(model.canSwapLanguages)
+        model.swapLanguages()
+        XCTAssertEqual(model.sourceCode, Language.automatic.code)
+        XCTAssertEqual(model.targetCode, "zh-Hans")
+        XCTAssertFalse(model.isTranslating)
+
+        model.selectSource("en")
+        XCTAssertTrue(model.canSwapLanguages)
+        model.swapLanguages()
+        XCTAssertEqual(model.sourceCode, "zh-Hans")
+        XCTAssertEqual(model.targetCode, "en")
+        model.stopTranslation()
+    }
+
     // MARK: - Pure logic
 
     func testJoinedOutputUsesBlankLineOnlyWhereSourceHasOne() {
