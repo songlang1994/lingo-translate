@@ -59,9 +59,14 @@ final class TranslatorModel: ObservableObject {
     }
 
     /// The segments describe the text currently in the editor and no newer
-    /// translation is waiting to start.
-    private var isOutputCurrent: Bool {
-        !hasPendingTranslation && TextLines.split(input) == requestLines
+    /// translation is waiting to start. A column with no translation at all is
+    /// not current, so an empty panel offers nothing to clear.
+    var isOutputCurrent: Bool {
+        !hasPendingTranslation && !requestLines.isEmpty && TextLines.split(input) == requestLines
+    }
+
+    var isSourceEmpty: Bool {
+        trimmedInput.isEmpty
     }
 
     func requestFocus() {
@@ -80,14 +85,32 @@ final class TranslatorModel: ObservableObject {
         }
     }
 
-    /// Called by the editor after the user changes the source text.
+    /// Called by the editor after the user changes the source text. Editing
+    /// never starts a translation: a queued one is dropped, a running request
+    /// keeps streaming against the text it started with, and the result is
+    /// marked stale until the user asks for a new translation.
     func updateInput(_ text: String) {
         guard text != input else { return }
+        debounceTask?.cancel()
+        debounceTask = nil
+        hasPendingTranslation = false
+        errorMessage = nil
         input = text
-        // Line numbers of the running request no longer match the text.
-        cancelRequest()
         validateHighlight()
-        scheduleTranslation()
+    }
+
+    /// Clears both columns and puts the caret back in the empty source.
+    func clear() {
+        debounceTask?.cancel()
+        debounceTask = nil
+        hasPendingTranslation = false
+        cancelRequest()
+        errorMessage = nil
+        input = ""
+        requestLines = []
+        segments = []
+        highlightedSegment = nil
+        requestFocus()
     }
 
     // MARK: - Highlight
@@ -240,7 +263,7 @@ final class TranslatorModel: ObservableObject {
             debounceTask = nil
             cancelRequest()
             errorMessage = nil
-            requestLines = TextLines.split(input)
+            requestLines = []
             segments = []
             highlightedSegment = nil
             return

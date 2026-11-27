@@ -46,6 +46,9 @@ struct BilingualTextView: NSViewRepresentable {
         view.onSelectSegment = { [weak model] index in
             model?.highlightSegment(at: index)
         }
+        view.onReplaceAllPaste = { [weak model] in
+            model?.translateNow()
+        }
         return view
     }
 
@@ -55,7 +58,8 @@ struct BilingualTextView: NSViewRepresentable {
             segments: model.segments,
             highlightedSegment: model.highlightedSegment,
             isTranslating: model.isTranslating,
-            focusToken: model.focusToken
+            focusToken: model.focusToken,
+            isTranslationStale: !model.isOutputCurrent
         )
     }
 }
@@ -63,6 +67,9 @@ struct BilingualTextView: NSViewRepresentable {
 final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
     var onSourceChange: ((String) -> Void)?
     var onSelectSegment: ((Int?) -> Void)?
+    /// A paste replaced the whole source, which is one of the moments that
+    /// starts a translation without a click.
+    var onReplaceAllPaste: (() -> Void)?
 
     static let gutter: CGFloat = 14
     static let topPadding: CGFloat = 12
@@ -80,6 +87,7 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
     private var segments: [TranslationSegment] = []
     private var translationRanges: [NSRange] = []
     private var highlightedSegment: Int?
+    private var isTranslationStale = false
     /// Aligned top of each segment that takes part in alignment, in text view coordinates.
     private var bands: [(segment: Int, top: CGFloat)] = []
     private var contentBottom: CGFloat = 0
@@ -121,6 +129,7 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
 
         sourceView.onMouseDown = { [weak self] point in self?.handleClick(at: point, inSource: true) }
         translationView.onMouseDown = { [weak self] point in self?.handleClick(at: point, inSource: false) }
+        sourceView.onReplaceAllPaste = { [weak self] in self?.onReplaceAllPaste?() }
         for view in [sourceView, translationView] {
             view.onSelectionStart = { [weak self] in self?.selectionDidStart() }
         }
@@ -144,7 +153,8 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
         segments: [TranslationSegment],
         highlightedSegment: Int?,
         isTranslating: Bool,
-        focusToken: Int
+        focusToken: Int,
+        isTranslationStale: Bool = false
     ) {
         // Programmatic edits (prefill, swap). Never interrupt an IME composition.
         if sourceView.string != input, !sourceView.hasMarkedText() {
@@ -154,8 +164,10 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
             setNeedsAlignment()
         }
 
-        if segments != self.segments {
-            self.segments = segments
+        let translationChanged = segments != self.segments || isTranslationStale != self.isTranslationStale
+        self.segments = segments
+        self.isTranslationStale = isTranslationStale
+        if translationChanged {
             reloadTranslation()
         }
 
@@ -199,16 +211,19 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
     private func reloadTranslation() {
         let text = NSMutableAttributedString()
         var ranges: [NSRange] = []
+        let attributes = isTranslationStale
+            ? SegmentTextView.staleTranslationAttributes
+            : SegmentTextView.translationAttributes
 
         for (index, segment) in segments.enumerated() {
             if index > 0 {
-                text.append(NSAttributedString(string: "\n", attributes: SegmentTextView.translationAttributes))
+                text.append(NSAttributedString(string: "\n", attributes: attributes))
             }
             let isFailed = segment.state == .failed
             let content = isFailed ? "Not translated" : segment.text
-            let attributes = isFailed ? SegmentTextView.failedAttributes : SegmentTextView.translationAttributes
+            let segmentAttributes = isFailed ? SegmentTextView.failedAttributes : attributes
             ranges.append(NSRange(location: text.length, length: (content as NSString).length))
-            text.append(NSAttributedString(string: content, attributes: attributes))
+            text.append(NSAttributedString(string: content, attributes: segmentAttributes))
         }
 
         translationRanges = ranges
@@ -639,10 +654,20 @@ final class SegmentTextView: NSTextView {
         return attributes
     }()
 
+    /// The translation no longer matches the source: same type, lighter color.
+    static let staleTranslationAttributes: [NSAttributedString.Key: Any] = {
+        var attributes = translationAttributes
+        attributes[.foregroundColor] = NSColor.secondaryLabelColor
+        return attributes
+    }()
+
     /// Distance from the text view's top to its text container.
     static var containerOriginY: CGFloat { BilingualScrollView.highlightInset.height }
 
     var onMouseDown: ((NSPoint) -> Void)?
+    /// Called after a paste that replaced the whole document, the only paste
+    /// that starts a translation on its own.
+    var onReplaceAllPaste: (() -> Void)?
     var placeholder: String?
     var highlightColor: NSColor = .clear
     /// Vertical extent both columns agree on, so a segment is highlighted
@@ -726,6 +751,19 @@ final class SegmentTextView: NSTextView {
         // editing continue as usual.
         onMouseDown?(convert(event.locationInWindow, from: nil))
         super.mouseDown(with: event)
+    }
+
+    /// A paste starts a translation only when it replaces the whole source:
+    /// into an empty editor or after Select All.
+    override func paste(_ sender: Any?) {
+        let selection = selectedRange()
+        let length = (string as NSString).length
+        let replacesAll = selection.location == 0 && selection.length == length
+        let wasComposing = hasMarkedText()
+        let pastedText = NSPasteboard.general.string(forType: .string)
+        super.paste(sender)
+        guard replacesAll, !wasComposing, let pastedText, !pastedText.isEmpty else { return }
+        onReplaceAllPaste?()
     }
 
     /// Replaces the whole text as one undoable edit, so the undo stack never

@@ -59,8 +59,27 @@ struct TranslatorView: View {
                     .scaleEffect(0.7)
                     .frame(width: 14, height: 14)
 
-                StopButton(action: model.stopTranslation)
-                    .transition(.opacity)
+                ActionButton(
+                    systemName: "stop.fill",
+                    title: "Stop",
+                    help: "Stop translating",
+                    action: model.stopTranslation
+                )
+                .transition(.opacity)
+            } else if model.isOutputCurrent {
+                ActionButton(
+                    systemName: "trash",
+                    title: "Clear",
+                    help: "Clear the source and translation",
+                    action: model.clear
+                )
+            } else if !model.isSourceEmpty {
+                ActionButton(
+                    systemName: "arrow.right",
+                    title: "Translate",
+                    help: "Translate the edited text",
+                    action: model.translateNow
+                )
             }
 
             IconButton(
@@ -127,7 +146,10 @@ struct TranslatorView: View {
     }
 }
 
-private struct StopButton: View {
+private struct ActionButton: View {
+    let systemName: String
+    let title: String
+    let help: String
     let action: () -> Void
 
     @State private var isHovering = false
@@ -135,9 +157,9 @@ private struct StopButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Image(systemName: "stop.fill")
-                    .font(.system(size: 8, weight: .bold))
-                Text("Stop")
+                Image(systemName: systemName)
+                    .font(.system(size: 9, weight: .semibold))
+                Text(title)
                     .font(.system(size: 11, weight: .medium))
             }
             .foregroundStyle(.secondary)
@@ -150,7 +172,7 @@ private struct StopButton: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .help("Stop translating")
+        .help(help)
         .onHover { isHovering = $0 }
     }
 }

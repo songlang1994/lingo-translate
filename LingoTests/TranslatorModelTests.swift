@@ -175,7 +175,7 @@ final class TranslatorModelTests: XCTestCase {
         XCTAssertEqual(model.errorMessage, "The request timed out.")
     }
 
-    func testEditingCancelsRunningRequestAndKeepsSegments() async {
+    func testEditingKeepsTheRunningRequestStreamingAndMarksTheOutputStale() async {
         let client = ScriptedClient([.reply("<s lines=\"1\">描述</s>\n" + String(repeating: "<s lines=\"2\">甲</s>\n", count: 50))])
         let model = TranslatorModel(settings: AppSettings(), client: client)
         model.prefill(man)
@@ -184,11 +184,49 @@ final class TranslatorModelTests: XCTestCase {
         }
         model.updateInput(man + "\nmore")
 
-        XCTAssertFalse(model.isTranslating)
-        XCTAssertFalse(model.segments.isEmpty)
+        // Editing must not interrupt the request...
+        XCTAssertTrue(model.isTranslating)
+        XCTAssertFalse(model.isOutputCurrent)
         let delivered = client.deliveredCharacters
         try? await Task.sleep(nanoseconds: 50_000_000)
-        XCTAssertEqual(client.deliveredCharacters, delivered)
+        XCTAssertGreaterThan(client.deliveredCharacters, delivered)
+
+        // ...and the finished translation is kept for the text it was made from.
+        let deadline = Date().addingTimeInterval(5)
+        while model.isTranslating, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertFalse(model.isTranslating)
+        XCTAssertFalse(model.segments.isEmpty)
+        XCTAssertFalse(model.isOutputCurrent)
+    }
+
+    func testEditingDoesNotTranslateOnItsOwn() async {
+        let client = ScriptedClient([.reply("<s lines=\"1\">你好。</s>")])
+        let model = TranslatorModel(settings: AppSettings(), client: client)
+
+        model.updateInput("Hello.")
+        try? await Task.sleep(nanoseconds: 600_000_000)
+
+        XCTAssertTrue(client.requests.isEmpty)
+        XCTAssertFalse(model.isTranslating)
+        XCTAssertFalse(model.isOutputCurrent)
+        XCTAssertFalse(model.isSourceEmpty)
+    }
+
+    func testClearingResetsBothColumnsAndFocusesTheSource() async {
+        let client = ScriptedClient([.reply("<s lines=\"1\">你好。</s>")])
+        let model = await translate("Hello.", client: client)
+        let focus = model.focusToken
+
+        model.clear()
+
+        XCTAssertEqual(model.input, "")
+        XCTAssertTrue(model.segments.isEmpty)
+        XCTAssertEqual(model.output, "")
+        XCTAssertFalse(model.isTranslating)
+        XCTAssertFalse(model.isOutputCurrent)
+        XCTAssertEqual(model.focusToken, focus + 1)
     }
 
     func testHighlightFollowsItsLinesWhenRetriedSegmentsAreInserted() async {

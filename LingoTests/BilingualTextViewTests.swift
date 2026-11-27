@@ -241,6 +241,63 @@ final class BilingualTextViewInteractionTests: XCTestCase {
         XCTAssertLessThan(alpha(x: 1, top: 0.5), 0.05)
     }
 
+    func testPasteReplacingTheWholeSourceRequestsTranslation() throws {
+        let (view, window) = makeView()
+        var sourceChanges: [String] = []
+        var pasteCount = 0
+        view.onSourceChange = { sourceChanges.append($0) }
+        view.onReplaceAllPaste = { pasteCount += 1 }
+        window.makeFirstResponder(view.sourceView)
+
+        let pasteboard = NSPasteboard.general
+        let saved = pasteboard.string(forType: .string)
+        pasteboard.clearContents()
+        pasteboard.setString("pasted text", forType: .string)
+        defer {
+            pasteboard.clearContents()
+            if let saved {
+                pasteboard.setString(saved, forType: .string)
+            }
+        }
+
+        // Pasting into an empty source replaces everything.
+        view.update(input: "", segments: [], highlightedSegment: nil, isTranslating: false, focusToken: 0)
+        view.sourceView.paste(nil)
+        XCTAssertEqual(pasteCount, 1)
+        XCTAssertEqual(sourceChanges.last, "pasted text")
+        XCTAssertEqual(view.sourceView.string, "pasted text")
+
+        // Pasting inside existing text is an ordinary edit.
+        view.sourceView.setSelectedRange(NSRange(location: 3, length: 0))
+        view.sourceView.paste(nil)
+        XCTAssertEqual(pasteCount, 1)
+
+        // Select All + Paste replaces everything again.
+        view.sourceView.selectAll(nil)
+        view.sourceView.paste(nil)
+        XCTAssertEqual(pasteCount, 2)
+    }
+
+    func testStaleTranslationIsDrawnInALighterColor() throws {
+        let (view, _) = makeView()
+        view.update(input: lines.joined(separator: "\n"), segments: segments, highlightedSegment: nil, isTranslating: false, focusToken: 0)
+        let storage = try XCTUnwrap(view.translationView.textStorage)
+        let normal = try XCTUnwrap(storage.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)
+        XCTAssertEqual(normal, SegmentTextView.translationAttributes[.foregroundColor] as? NSColor)
+
+        view.update(
+            input: lines.joined(separator: "\n") + "\nmore",
+            segments: segments,
+            highlightedSegment: nil,
+            isTranslating: false,
+            focusToken: 0,
+            isTranslationStale: true
+        )
+        let stale = try XCTUnwrap(storage.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)
+        XCTAssertEqual(stale, NSColor.secondaryLabelColor)
+        XCTAssertNotEqual(stale, normal)
+    }
+
     func testCompositionReachesTheModelOnlyWhenCommitted() {
         let (view, window) = makeView()
         var reported: [String] = []
