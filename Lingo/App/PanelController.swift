@@ -245,18 +245,39 @@ final class PanelController {
 
     // MARK: - Dismissal
 
-    /// Clicks in any other application dismiss the panel. Events aimed at our
-    /// own windows are not reported to a global monitor, so panel interaction
-    /// is unaffected.
+    /// Clicks in any other application dismiss the panel. A global monitor also
+    /// reports clicks that land on this panel: because the panel never
+    /// activates the app, the system does not attribute those clicks to us.
     private func startOutsideClickMonitor() {
         guard outsideClickMonitor == nil else { return }
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown]
-        ) { [weak self] _ in
+        ) { [weak self] event in
+            let windowNumber = event.windowNumber
+            let point = NSEvent.mouseLocation
             DispatchQueue.main.async {
-                self?.hide(returnFocus: false)
+                guard let self else { return }
+                guard !Self.isClickInsidePanel(
+                    windowNumber: windowNumber,
+                    panelWindowNumber: self.panel.windowNumber,
+                    point: point,
+                    panelFrame: self.panel.frame
+                ) else { return }
+                self.hide(returnFocus: false)
             }
         }
+    }
+
+    /// Whether a click reported by the global monitor belongs to the panel
+    /// itself. `point` is in screen coordinates, like `NSEvent.mouseLocation`.
+    nonisolated static func isClickInsidePanel(
+        windowNumber: Int,
+        panelWindowNumber: Int,
+        point: NSPoint,
+        panelFrame: NSRect
+    ) -> Bool {
+        if windowNumber != 0 { return windowNumber == panelWindowNumber }
+        return panelFrame.contains(point)
     }
 
     private func stopOutsideClickMonitor() {
@@ -270,9 +291,11 @@ final class PanelController {
         guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
         if app == NSRunningApplication.current {
             lastExternalAppLeftAt = Date()
-        } else {
-            lastExternalApp = app
+            // Taking the foreground ourselves, for example when the window
+            // drag activates the app, is not the user leaving the panel.
+            return
         }
+        lastExternalApp = app
         guard panel.isVisible else { return }
         guard Date() >= focusSettlesAt else { return }
         hide(returnFocus: false)

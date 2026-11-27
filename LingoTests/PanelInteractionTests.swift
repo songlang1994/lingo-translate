@@ -42,6 +42,42 @@ final class PanelKeyActionTests: XCTestCase {
     }
 }
 
+final class PanelOutsideClickTests: XCTestCase {
+    private let panelFrame = NSRect(x: 100, y: 200, width: 800, height: 480)
+
+    func testClickOnThePanelIsNotAnOutsideClick() {
+        let point = NSPoint(x: panelFrame.midX, y: panelFrame.midY)
+        XCTAssertTrue(PanelController.isClickInsidePanel(
+            windowNumber: 12,
+            panelWindowNumber: 12,
+            point: point,
+            panelFrame: panelFrame
+        ))
+        // The click may reach the monitor without a window number.
+        XCTAssertTrue(PanelController.isClickInsidePanel(
+            windowNumber: 0,
+            panelWindowNumber: 12,
+            point: point,
+            panelFrame: panelFrame
+        ))
+    }
+
+    func testClickInAnotherApplicationIsAnOutsideClick() {
+        XCTAssertFalse(PanelController.isClickInsidePanel(
+            windowNumber: 7,
+            panelWindowNumber: 12,
+            point: NSPoint(x: panelFrame.midX, y: panelFrame.midY),
+            panelFrame: panelFrame
+        ))
+        XCTAssertFalse(PanelController.isClickInsidePanel(
+            windowNumber: 7,
+            panelWindowNumber: 12,
+            point: NSPoint(x: 20, y: 20),
+            panelFrame: panelFrame
+        ))
+    }
+}
+
 @MainActor
 final class TranslatorViewLayoutTests: XCTestCase {
     private func hostView() -> (NSView, NSWindow) {

@@ -54,6 +54,7 @@ scripts/      icon generation script
 - Keep the implementation native; do not add third-party dependencies unless the user asks.
 - Update this file when translation flow, segmentation or alignment, shortcuts, permissions, build commands, or the directory layout change.
 - Verify UI changes with the `ui-visual-check` skill using window-level screenshots only. Never capture the whole screen, and keep images in `/tmp`.
+- Do not script UI interaction (clicks, drags, gestures) to test behavior; synthetic events are slow and unreliable here. Ask the user to perform the interaction and report back instead.
 - `.env` holds local endpoint settings and is git-ignored. Do not commit it or print its secrets.
 - Commit messages: English imperative mood, capitalized, no prefix; the body explains why. Include `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`.
 - Documentation states facts; avoid inflated wording.
