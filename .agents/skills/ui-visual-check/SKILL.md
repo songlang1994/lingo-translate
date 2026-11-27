@@ -16,15 +16,15 @@ The bundled script lists on-screen windows and captures exactly one of them:
 
 ```bash
 # What is on screen right now? (defaults to Lingo Translate windows)
-swift .github/skills/ui-visual-check/scripts/window-shot.swift list
+swift .agents/skills/ui-visual-check/scripts/window-shot.swift list
 
 # Capture the Lingo panel; the panel hides when it loses focus, so start this
 # first and let --wait pick the window up as it appears
-swift .github/skills/ui-visual-check/scripts/window-shot.swift shot --out /tmp/lingo-ui-check/panel.png --wait 20
+swift .agents/skills/ui-visual-check/scripts/window-shot.swift shot --out /tmp/lingo-ui-check/panel.png --wait 20
 
 # Capture a specific window by title or by ID from `list`
-swift .github/skills/ui-visual-check/scripts/window-shot.swift shot --title Settings --out /tmp/lingo-ui-check/settings.png
-swift .github/skills/ui-visual-check/scripts/window-shot.swift shot --window 10302 --out /tmp/lingo-ui-check/panel.png
+swift .agents/skills/ui-visual-check/scripts/window-shot.swift shot --title Settings --out /tmp/lingo-ui-check/settings.png
+swift .agents/skills/ui-visual-check/scripts/window-shot.swift shot --window 10302 --out /tmp/lingo-ui-check/panel.png
 ```
 
 It prints the captured window ID, title, point size, and pixel size, followed by the output path. A Retina window reports twice the pixel size of its point size; that is expected, not a layout bug.
