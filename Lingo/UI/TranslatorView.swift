@@ -68,7 +68,7 @@ struct TranslatorView: View {
                 .transition(.opacity)
             } else if model.isOutputCurrent {
                 ActionButton(
-                    systemName: "trash",
+                    systemName: "xmark",
                     title: "Clear",
                     help: "Clear the source and translation",
                     action: model.clear
