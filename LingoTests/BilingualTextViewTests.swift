@@ -163,6 +163,22 @@ final class BilingualTextViewInteractionTests: XCTestCase {
         XCTAssertEqual(cleared, 2)
     }
 
+    func testSelectingInOneColumnClearsTheOtherColumnsSelection() {
+        let (view, _) = makeView()
+
+        view.sourceView.setSelectedRanges([NSValue(range: NSRange(location: 0, length: 4))], affinity: .downstream, stillSelecting: true)
+        XCTAssertEqual(view.sourceView.selectedRange().length, 4)
+
+        view.translationView.setSelectedRanges([NSValue(range: NSRange(location: 0, length: 2))], affinity: .downstream, stillSelecting: true)
+        XCTAssertEqual(view.translationView.selectedRange().length, 2)
+        XCTAssertEqual(view.sourceView.selectedRange().length, 0)
+
+        // A plain caret move in the source also drops the translation selection.
+        view.sourceView.setSelectedRanges([NSValue(range: NSRange(location: 1, length: 0))], affinity: .downstream, stillSelecting: false)
+        XCTAssertEqual(view.translationView.selectedRange().length, 0)
+        XCTAssertEqual(view.sourceView.selectedRange().location, 1)
+    }
+
     func testHighlightPadsTheTextColumnHorizontally() throws {
         let (view, _) = makeView()
         view.update(input: lines.joined(separator: "\n"), segments: segments, highlightedSegment: 1, isTranslating: false, focusToken: 0)
@@ -331,10 +347,36 @@ final class BilingualTextViewInteractionTests: XCTestCase {
         XCTAssertEqual(view.sourceView.string, original)
     }
 
-    func testStreamingFollowsBottomUntilTheUserScrollsAway() {
+    func testPrefillThenPanelFocusStillStartsTheTranslationAtTheTop() {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 300), styleMask: [.titled], backing: .buffered, defer: true)
+        let view = BilingualScrollView(frame: NSRect(x: 0, y: 0, width: 640, height: 300))
+        window.contentView = view
+        let long = (0..<40).map { "line \($0) of the source text" }.joined(separator: "\n")
+        let segments = [TranslationSegment(lines: 0...0, text: "译文 0", state: .streaming)]
+
+        // The panel is built while the prefill translation is already running,
+        // then shown and focused, as on launch with selected text.
+        view.update(input: long, segments: [], highlightedSegment: nil, isTranslating: true, focusToken: 0)
+        view.layoutSubtreeIfNeeded()
+        window.makeFirstResponder(view.sourceView)
+        view.update(input: long, segments: segments, highlightedSegment: nil, isTranslating: true, focusToken: 1)
+        view.layoutSubtreeIfNeeded()
+        XCTAssertEqual(view.contentView.bounds.minY, 0)
+    }
+
+    func testTranslationStartsAtTheTopAndFollowsOnlyAfterTheUserScrollsDown() {
         let (view, _) = makeView()
         let long = (0..<40).map { "line \($0) of the source text" }
         var streamed: [TranslationSegment] = []
+
+        // A long source leaves the view scrolled to the bottom, as it is after
+        // a paste puts the caret at the end.
+        view.update(input: long.joined(separator: "\n"), segments: [], highlightedSegment: nil, isTranslating: false, focusToken: 0)
+        view.layoutSubtreeIfNeeded()
+        let startLimit = (view.documentView?.frame.height ?? 0) - view.contentView.bounds.height
+        view.contentView.scroll(to: NSPoint(x: 0, y: startLimit))
+        view.reflectScrolledClipView(view.contentView)
+        XCTAssertGreaterThan(view.contentView.bounds.minY, 0)
 
         func stream(upTo count: Int) {
             while streamed.count < count {
@@ -348,16 +390,13 @@ final class BilingualTextViewInteractionTests: XCTestCase {
             return abs(clip.bounds.maxY - (view.documentView?.frame.height ?? 0)) < 1
         }
 
-        stream(upTo: 20)
-        XCTAssertTrue(isAtBottom())
+        // Starting the translation returns to the top so the streamed output
+        // is visible from its first line.
+        stream(upTo: 1)
+        XCTAssertEqual(view.contentView.bounds.minY, 0)
 
-        // The user scrolls to the top: following stops.
-        NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification, object: view)
-        view.contentView.scroll(to: .zero)
-        view.reflectScrolledClipView(view.contentView)
-        NotificationCenter.default.post(name: NSScrollView.didEndLiveScrollNotification, object: view)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-        stream(upTo: 30)
+        // Streaming does not drag the view to the bottom on its own.
+        stream(upTo: 20)
         XCTAssertEqual(view.contentView.bounds.minY, 0)
 
         // Back near the bottom: following resumes.
@@ -367,8 +406,13 @@ final class BilingualTextViewInteractionTests: XCTestCase {
         view.reflectScrolledClipView(view.contentView)
         NotificationCenter.default.post(name: NSScrollView.didEndLiveScrollNotification, object: view)
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-        stream(upTo: 40)
+        stream(upTo: 30)
         XCTAssertTrue(isAtBottom())
+
+        // Restarting the translation clears the output and returns to the top.
+        view.update(input: long.joined(separator: "\n"), segments: [], highlightedSegment: nil, isTranslating: true, focusToken: 0)
+        view.layoutSubtreeIfNeeded()
+        XCTAssertEqual(view.contentView.bounds.minY, 0)
     }
 }
 

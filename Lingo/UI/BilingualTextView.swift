@@ -100,10 +100,16 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
     // Following the streaming output.
     private let followTolerance: CGFloat = 24
     private var isTranslating = false
-    private var isFollowing = true
+    private var isFollowing = false
     private var isLiveScrollTracking = false
     private var needsFollowAfterLayout = false
+    /// The next layout pass positions the view at the top of the document,
+    /// once the pasted source has been measured.
+    private var needsScrollToTop = false
     private var observers: [NSObjectProtocol] = []
+    /// Clearing the other column's selection must not look like the user
+    /// selecting text there.
+    private var isClearingOtherSelection = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -132,6 +138,10 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
         sourceView.onReplaceAllPaste = { [weak self] in self?.onReplaceAllPaste?() }
         for view in [sourceView, translationView] {
             view.onSelectionStart = { [weak self] in self?.selectionDidStart() }
+            view.onSelectionChange = { [weak self, weak view] in
+                guard let self, let view else { return }
+                self.selectionChanged(in: view)
+            }
         }
 
         observeScrolling()
@@ -165,6 +175,10 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
         }
 
         let translationChanged = segments != self.segments || isTranslationStale != self.isTranslationStale
+        // Restarting a request clears the output before the new reply arrives,
+        // so an empty column while still translating is a new run. The first
+        // run is caught by the `isTranslating` change below.
+        let restartedTranslation = isTranslating && self.isTranslating && segments.isEmpty && !self.segments.isEmpty
         self.segments = segments
         self.isTranslationStale = isTranslationStale
         if translationChanged {
@@ -179,16 +193,28 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
         if isTranslating != self.isTranslating {
             self.isTranslating = isTranslating
             if isTranslating {
-                isFollowing = true
-                needsFollowAfterLayout = true
-                followToBottom()
+                startFollowingAtTop()
             }
+        } else if restartedTranslation {
+            startFollowingAtTop()
         }
 
         if focusToken != self.focusToken {
             self.focusToken = focusToken
             focusSource()
         }
+    }
+
+    /// A new translation starts at the top of the document so the streamed
+    /// output is visible from its first line, even when a long source was just
+    /// pasted. Following the tail stays off until the user scrolls to the
+    /// bottom themselves.
+    private func startFollowingAtTop() {
+        revealSelectionAfterLayout = false
+        needsFollowAfterLayout = false
+        isFollowing = false
+        needsScrollToTop = true
+        scrollToTop()
     }
 
     private func focusSource() {
@@ -251,6 +277,20 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
         SegmentTextView.sourceAttributes
     }
 
+    /// Only one column at a time can show selected text: selecting text or
+    /// placing the caret in one column collapses the other column's selection.
+    /// The other column keeps its caret position, so it does not jump when the
+    /// user returns to it.
+    private func selectionChanged(in view: SegmentTextView) {
+        guard !isApplyingTextChange, !isClearingOtherSelection else { return }
+        let other = view === sourceView ? translationView : sourceView
+        let range = other.selectedRange()
+        guard range.length > 0 else { return }
+        isClearingOtherSelection = true
+        other.setSelectedRange(NSRange(location: range.location, length: 0))
+        isClearingOtherSelection = false
+    }
+
     /// A text selection takes over the emphasis, so the segment highlight
     /// steps aside as soon as the selection begins, mid-drag included.
     private func selectionDidStart() {
@@ -264,7 +304,9 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
     }
 
     func textDidChange(_ notification: Notification) {
-        revealSelectionAfterLayout = true
+        // Caret revealing follows the user's own edits; a programmatic
+        // replacement (prefill, swap) must not jump the scroll position.
+        revealSelectionAfterLayout = !isApplyingTextChange
         setNeedsAlignment()
         // Only finished text reaches the model; marked (composing) text waits.
         guard !sourceView.hasMarkedText() else { return }
@@ -321,6 +363,13 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
         }
 
         updateHighlightSpan()
+
+        if needsScrollToTop {
+            needsScrollToTop = false
+            needsFollowAfterLayout = false
+            revealSelectionAfterLayout = false
+            scrollToTop()
+        }
 
         if needsFollowAfterLayout {
             needsFollowAfterLayout = false
@@ -535,6 +584,13 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
         )
     }
 
+    private func scrollToTop() {
+        let clipView = contentView
+        guard clipView.bounds.origin.y != 0 else { return }
+        clipView.scroll(to: NSPoint(x: clipView.bounds.origin.x, y: 0))
+        reflectScrolledClipView(clipView)
+    }
+
     private func followToBottom() {
         guard isFollowing, isTranslating else { return }
         let clipView = contentView
@@ -686,13 +742,17 @@ final class SegmentTextView: NSTextView {
     /// Called when the user starts selecting text, including while a
     /// selection drag is still in progress.
     var onSelectionStart: (() -> Void)?
+    /// Called on every user selection change, caret moves included.
+    var onSelectionChange: (() -> Void)?
 
     /// The primitive AppKit uses for every selection change, so a drag is
     /// reported while it starts rather than after the mouse comes up.
     override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
         super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
         // Marked text is an IME composition, not the user selecting text.
-        guard !hasMarkedText(), ranges.contains(where: { $0.rangeValue.length > 0 }) else { return }
+        guard !hasMarkedText() else { return }
+        onSelectionChange?()
+        guard ranges.contains(where: { $0.rangeValue.length > 0 }) else { return }
         onSelectionStart?()
     }
 
