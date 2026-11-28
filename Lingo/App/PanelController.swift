@@ -91,7 +91,11 @@ final class PanelController {
         panel.setFrameAutosaveName("TranslationPanel")
 
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.handleKeyDown(event) ?? event
+            // Writing this as `self?.handleKeyDown(event) ?? event` would flatten
+            // the optional: a nil return from handleKeyDown becomes nil for the
+            // whole chain, so `??` restores the event and nothing is consumed.
+            guard let self else { return event }
+            return self.handleKeyDown(event)
         }
 
         frontmostAppObserver = NSWorkspace.shared.notificationCenter.addObserver(
