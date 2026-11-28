@@ -394,7 +394,7 @@ final class TranslatorModelTests: XCTestCase {
         XCTAssertFalse(model.isDictionaryVisible)
     }
 
-    func testEditingTheSourceHidesTheDictionary() async {
+    func testEditingTheSourceHidesTheDictionaryUntilTheTextReturns() async {
         let dictionary = ScriptedDictionaryClient([sampleEntry])
         let client = ScriptedClient([.reply("<s lines=\"1\">短暂的</s>")])
         let model = TranslatorModel(settings: AppSettings(), client: client, dictionaryClient: dictionary)
@@ -404,8 +404,33 @@ final class TranslatorModelTests: XCTestCase {
 
         model.updateInput("ephemeral ")
 
-        XCTAssertEqual(model.dictionaryState, .none)
         XCTAssertFalse(model.isDictionaryVisible)
+
+        model.updateInput("ephemeral")
+
+        XCTAssertTrue(model.isOutputCurrent)
+        XCTAssertTrue(model.isDictionaryVisible)
+    }
+
+    func testRestoringTheTextWhileTheLookupIsPendingStillShowsTheCard() async {
+        let dictionary = ScriptedDictionaryClient([sampleEntry])
+        dictionary.delayNanoseconds = 300_000_000
+        let client = ScriptedClient([.reply("<s lines=\"1\">短暂的</s>")])
+        let model = TranslatorModel(settings: AppSettings(), client: client, dictionaryClient: dictionary)
+
+        model.prefill("ephemeral")
+        XCTAssertTrue(model.isDictionaryLookupPending)
+
+        model.updateInput("ephemeral ")
+        model.updateInput("ephemeral")
+        XCTAssertTrue(model.isOutputCurrent)
+
+        let deadline = Date().addingTimeInterval(5)
+        while (model.isTranslating || model.isDictionaryLookupPending), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertEqual(model.dictionaryState, .entry(sampleEntry))
+        XCTAssertTrue(model.isDictionaryVisible)
     }
 
     func testStoppingKeepsAFinishedEntry() async {

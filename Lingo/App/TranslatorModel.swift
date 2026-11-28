@@ -22,7 +22,8 @@ final class TranslatorModel: ObservableObject {
     @Published var copied = false
     @Published var focusToken = 0
     @Published private(set) var highlightedSegment: Int?
-    /// Dictionary entry for a word or short phrase, shown under both columns.
+    /// Dictionary entry for the current request, shown under both columns
+    /// while the source matches that request.
     @Published private(set) var dictionaryState: DictionaryState = .none
 
     /// Snapshot of the source lines the current `segments` refer to.
@@ -90,8 +91,9 @@ final class TranslatorModel: ObservableObject {
     }
 
     /// The card belongs to the current output: it hides while the source is
-    /// edited and while a newer translation is waiting to start. It appears
-    /// only once the entry is ready, so there is no loading state.
+    /// edited and while a newer translation is waiting to start, and returns
+    /// as soon as the source matches the output again. It appears only once
+    /// the entry is ready, so there is no loading state.
     var isDictionaryVisible: Bool {
         guard isOutputCurrent else { return false }
         if case .entry = dictionaryState { return true }
@@ -137,7 +139,9 @@ final class TranslatorModel: ObservableObject {
         hasPendingTranslation = false
         errorMessage = nil
         input = text
-        cancelDictionary(clearing: true)
+        // The entry belongs to the running request, not to the edited text, so
+        // it is kept: hiding the card is enough, and it comes back along with
+        // the output when the user restores the text.
         validateHighlight()
     }
 
