@@ -2,59 +2,6 @@ import XCTest
 @testable import Lingo_Translate
 
 @MainActor
-private final class ScriptedClient: TranslationClient {
-    enum Step {
-        case reply(String)
-        case delayedReply(String, nanoseconds: UInt64)
-        case failure(Error)
-    }
-
-    var steps: [Step]
-    private(set) var requests: [(instructions: String, input: String)] = []
-    /// Characters streamed per request.
-    private(set) var delivered: [Int] = []
-    var deliveredCharacters: Int { delivered.reduce(0, +) }
-
-    init(_ steps: [Step]) {
-        self.steps = steps
-    }
-
-    func complete(
-        instructions: String,
-        input: String,
-        configuration: Configuration,
-        onDelta: @escaping (String) -> Void
-    ) async throws -> String {
-        requests.append((instructions, input))
-        delivered.append(0)
-        guard !steps.isEmpty else { throw URLError(.badServerResponse) }
-        switch steps.removeFirst() {
-        case let .failure(error):
-            throw error
-        case let .delayedReply(text, delay):
-            try await Task.sleep(nanoseconds: delay)
-            return try await stream(text, onDelta: onDelta)
-        case let .reply(text):
-            return try await stream(text, onDelta: onDelta)
-        }
-    }
-
-    /// Streams in small chunks so partial parsing and cancellation are exercised.
-    private func stream(_ text: String, onDelta: @escaping (String) -> Void) async throws -> String {
-        var index = text.startIndex
-        while index < text.endIndex {
-            try Task.checkCancellation()
-            let end = text.index(index, offsetBy: 7, limitedBy: text.endIndex) ?? text.endIndex
-            onDelta(String(text[index..<end]))
-            delivered[delivered.count - 1] += text.distance(from: index, to: end)
-            index = end
-            await Task.yield()
-        }
-        return text
-    }
-}
-
-@MainActor
 final class TranslatorModelTests: XCTestCase {
     private let man = """
     DESCRIPTION
@@ -297,6 +244,14 @@ final class TranslatorModelTests: XCTestCase {
     }
 
     func testSwapRightAfterAnEditRetranslatesInsteadOfUsingStaleSegments() async {
+        // The swap needs a concrete source language, which the app may not
+        // have stored on this machine.
+        let settings = AppSettings()
+        let (source, target) = (settings.sourceCode, settings.targetCode)
+        defer { settings.sourceCode = source; settings.targetCode = target }
+        settings.sourceCode = "en"
+        settings.targetCode = "zh-Hans"
+
         let client = ScriptedClient([.reply("<s lines=\"1\">你好。</s>"), .reply("<s lines=\"1\">x</s>")])
         let model = await translate("Hello.", client: client)
         XCTAssertTrue(model.canCopy)
@@ -304,9 +259,6 @@ final class TranslatorModelTests: XCTestCase {
         model.updateInput("Hello. How are you?")
         XCTAssertFalse(model.canCopy)
 
-        let settings = AppSettings()
-        let (source, target) = (settings.sourceCode, settings.targetCode)
-        defer { settings.sourceCode = source; settings.targetCode = target }
         model.swapLanguages()
 
         XCTAssertEqual(model.input, "Hello. How are you?")
@@ -338,7 +290,130 @@ final class TranslatorModelTests: XCTestCase {
         model.stopTranslation()
     }
 
+    // MARK: - Dictionary
+
+    private var sampleEntry: DictionaryEntry {
+        DictionaryEntry(
+            term: "ephemeral",
+            pronunciation: "/ɪˈfem(ə)rəl/",
+            senses: [
+                .init(
+                    partOfSpeech: "adj.",
+                    definition: "短暂的；转瞬即逝的",
+                    examples: [.init(source: "Fame is often ephemeral.", translation: "名声常常转瞬即逝。")]
+                )
+            ]
+        )
+    }
+
+    /// Waits for the translation and for any lookup it started.
+    private func waitForTranslation(_ model: TranslatorModel) async {
+        let deadline = Date().addingTimeInterval(5)
+        while (model.isTranslating || model.dictionaryState == .loading), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertFalse(model.isTranslating)
+        XCTAssertNotEqual(model.dictionaryState, .loading)
+    }
+
+    func testWordAlsoGetsADictionaryEntry() async {
+        let dictionary = ScriptedDictionaryClient([sampleEntry])
+        let client = ScriptedClient([.reply("<s lines=\"1\">短暂的</s>")])
+        let model = TranslatorModel(settings: AppSettings(), client: client, dictionaryClient: dictionary)
+
+        model.prefill("ephemeral")
+        await waitForTranslation(model)
+
+        XCTAssertEqual(dictionary.terms, ["ephemeral"])
+        XCTAssertEqual(model.output, "短暂的")
+        XCTAssertEqual(model.dictionaryState, .entry(sampleEntry))
+        XCTAssertTrue(model.isDictionaryVisible)
+    }
+
+    func testSentenceDoesNotStartADictionaryLookup() async {
+        let dictionary = ScriptedDictionaryClient([sampleEntry])
+        let client = ScriptedClient([.reply("<s lines=\"1\">你好，世界。</s>")])
+        let model = TranslatorModel(settings: AppSettings(), client: client, dictionaryClient: dictionary)
+
+        model.prefill("Hello, world.")
+        await waitForTranslation(model)
+
+        XCTAssertTrue(dictionary.terms.isEmpty)
+        XCTAssertEqual(model.dictionaryState, .none)
+        XCTAssertFalse(model.isDictionaryVisible)
+    }
+
+    func testFailedDictionaryLookupKeepsTheTranslation() async {
+        let dictionary = ScriptedDictionaryClient()
+        dictionary.failure = URLError(.timedOut)
+        let client = ScriptedClient([.reply("<s lines=\"1\">短暂的</s>")])
+        let model = TranslatorModel(settings: AppSettings(), client: client, dictionaryClient: dictionary)
+
+        model.prefill("ephemeral")
+        await waitForTranslation(model)
+
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.output, "短暂的")
+        XCTAssertEqual(model.dictionaryState, .none)
+    }
+
+    func testInvalidDictionaryReplyHidesTheCard() async {
+        let dictionary = ScriptedDictionaryClient([nil])
+        let client = ScriptedClient([.reply("<s lines=\"1\">短暂的</s>")])
+        let model = TranslatorModel(settings: AppSettings(), client: client, dictionaryClient: dictionary)
+
+        model.prefill("ephemeral")
+        await waitForTranslation(model)
+
+        XCTAssertEqual(dictionary.terms, ["ephemeral"])
+        XCTAssertEqual(model.dictionaryState, .none)
+        XCTAssertFalse(model.isDictionaryVisible)
+    }
+
+    func testEditingTheSourceHidesTheDictionary() async {
+        let dictionary = ScriptedDictionaryClient([sampleEntry])
+        let client = ScriptedClient([.reply("<s lines=\"1\">短暂的</s>")])
+        let model = TranslatorModel(settings: AppSettings(), client: client, dictionaryClient: dictionary)
+        model.prefill("ephemeral")
+        await waitForTranslation(model)
+        XCTAssertTrue(model.isDictionaryVisible)
+
+        model.updateInput("ephemeral ")
+
+        XCTAssertEqual(model.dictionaryState, .none)
+        XCTAssertFalse(model.isDictionaryVisible)
+    }
+
+    func testStoppingKeepsAFinishedEntry() async {
+        let dictionary = ScriptedDictionaryClient([sampleEntry])
+        let client = ScriptedClient([.delayedReply("<s lines=\"1\">短暂的</s>", nanoseconds: 1_000_000_000)])
+        let model = TranslatorModel(settings: AppSettings(), client: client, dictionaryClient: dictionary)
+
+        model.prefill("ephemeral")
+        let deadline = Date().addingTimeInterval(5)
+        while model.dictionaryState == .loading, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertTrue(model.isTranslating)
+
+        model.stopTranslation()
+
+        XCTAssertEqual(model.dictionaryState, .entry(sampleEntry))
+    }
+
     // MARK: - Pure logic
+
+    func testDictionaryPaneHeightIsRemembered() {
+        let settings = AppSettings()
+        let original = settings.dictionaryHeight
+        defer { settings.dictionaryHeight = original }
+
+        let model = TranslatorModel(settings: settings, client: ScriptedClient([]))
+        model.dictionaryPaneHeight = 140
+
+        XCTAssertEqual(AppSettings().dictionaryHeight, 140, accuracy: 0.001)
+        XCTAssertEqual(model.dictionaryPaneHeight, 140, accuracy: 0.001)
+    }
 
     func testJoinedOutputUsesBlankLineOnlyWhereSourceHasOne() {
         let lines = ["a", "b", "", "c", "d"]

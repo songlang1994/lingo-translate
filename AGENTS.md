@@ -26,10 +26,11 @@ Lingo/
   App/        app lifecycle, panel control, settings window, shortcut management,
               accessibility permission, TranslatorModel (core state)
   Model/      languages, configuration, shortcut value type, double-tap detection,
-              system prompts, line splitting, reply parsing, rule-based segmentation
-  Services/   Responses client, Carbon global hot key, double-tap modifier monitor,
-              selected text reader, keychain storage
-  UI/         two-column translation panel, settings, shortcut recorder
+              system prompts, line splitting, reply parsing, rule-based segmentation,
+              dictionary entry, term detection and reply parsing
+  Services/   Responses client, dictionary lookup client, Carbon global hot key,
+              double-tap modifier monitor, selected text reader, keychain storage
+  UI/         two-column translation panel, dictionary card, settings, shortcut recorder
   Resources/  app icon and colors
 LingoTests/   XCTest unit tests
 Support/      Info.plist
@@ -42,6 +43,8 @@ scripts/      icon generation script
 - Only the Responses API is supported (`/v1/responses`, SSE). Endpoints are completed automatically: a base address gets `/v1/responses`; when a model rejects `reasoning` with HTTP 400, the request is retried once without it.
 - The source text belongs to the user and is never rewritten by the model. The primary protocol numbers source lines and the model answers with `<s lines="A-B">…</s>` logical paragraphs; `SegmentParser` repairs out-of-order, overlapping, and out-of-range ranges. If the model ignores the format, `LayoutSegmenter` splits the text locally and retries with an `<s id="N">` protocol; a second failure shows the whole translation unaligned.
 - The two columns are TextKit 1 text views. Paragraph tops are aligned by adding spacing through `NSLayoutManagerDelegate`; no text content is modified.
+- A single word or short phrase also gets a dictionary request: `DictionaryDetector` decides locally (single line, at most 4 words or 12 CJK characters, no code or URLs), the model answers `valid: false` for sentences, and the reply is one JSON object parsed by `DictionaryParser`. The request runs beside the translation, shares `requestID`, and its failure or absence only hides the card under both columns; it never changes the translation flow.
+- The dictionary pane has a draggable divider. Its height is stored in UserDefaults (`dictionaryHeight`) and clamped by `DictionaryPaneLayout`: the columns keep one fully visible text line (`topPadding + lineHeight`) under the header, and the pane never drops below its 96pt minimum. The divider is an AppKit view that refuses `mouseDownCanMoveWindow`, because the panel moves when its background is dragged; a SwiftUI gesture would never receive the mouse down.
 - The panel is a non-activating floating window (`.nonactivatingPanel`). It hides on outside clicks, app switches, and `Esc`, and returns focus to the previous window.
 - Settings live in UserDefaults; the API key lives in the login keychain (service is the bundle ID, account `api-key`). Never move it to UserDefaults or plain files.
 - Reading the selection from other apps and the double-tap modifier shortcut require Accessibility permission. Never request it at launch.

@@ -4,6 +4,16 @@ struct TranslatorView: View {
     @ObservedObject var model: TranslatorModel
     let openSettings: () -> Void
 
+    /// Height of the dictionary pane while it is being dragged; committed to
+    /// the settings when the drag ends.
+    @State private var dictionaryHeight: CGFloat
+
+    init(model: TranslatorModel, openSettings: @escaping () -> Void) {
+        self.model = model
+        self.openSettings = openSettings
+        _dictionaryHeight = State(initialValue: model.dictionaryPaneHeight)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -104,6 +114,34 @@ struct TranslatorView: View {
     }
 
     private var content: some View {
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
+                columns
+                if model.isDictionaryVisible {
+                    DictionaryResizeHandle(
+                        displayedHeight: paneHeight(available: proxy.size.height),
+                        available: proxy.size.height,
+                        onDrag: { height in
+                            dictionaryHeight = DictionaryPaneLayout.height(height, available: proxy.size.height)
+                        },
+                        onEnd: { height in
+                            dictionaryHeight = DictionaryPaneLayout.height(height, available: proxy.size.height)
+                            model.dictionaryPaneHeight = dictionaryHeight
+                        }
+                    )
+                    .frame(height: DictionaryPaneLayout.dividerHeight)
+                    DictionaryView(state: model.dictionaryState, sourceText: model.input)
+                        .frame(height: paneHeight(available: proxy.size.height))
+                }
+            }
+        }
+    }
+
+    private func paneHeight(available: CGFloat) -> CGFloat {
+        DictionaryPaneLayout.height(dictionaryHeight, available: available)
+    }
+
+    private var columns: some View {
         BilingualTextView(model: model)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay(alignment: .center) {
@@ -144,6 +182,121 @@ struct TranslatorView: View {
         Rectangle()
             .fill(Color.primary.opacity(0.07))
             .frame(height: 1)
+    }
+}
+
+/// Divider between the columns and the dictionary pane. It has to be an
+/// AppKit view: the panel can be moved by dragging its background, so a
+/// SwiftUI drag gesture would never see the mouse down. This view declines the
+/// window drag and runs the resize itself.
+private struct DictionaryResizeHandle: NSViewRepresentable {
+    /// Height the pane shows right now, which may differ from the stored one
+    /// when the window is too small.
+    let displayedHeight: CGFloat
+    /// Content height of the panel, the bound the drag is clamped against.
+    let available: CGFloat
+    let onDrag: (CGFloat) -> Void
+    let onEnd: (CGFloat) -> Void
+
+    func makeNSView(context: Context) -> DictionaryResizeView {
+        let view = DictionaryResizeView()
+        view.toolTip = "Drag to resize the dictionary"
+        return view
+    }
+
+    func updateNSView(_ view: DictionaryResizeView, context: Context) {
+        view.displayedHeight = displayedHeight
+        view.available = available
+        view.onDrag = onDrag
+        view.onEnd = onEnd
+    }
+}
+
+final class DictionaryResizeView: NSView {
+    var displayedHeight: CGFloat = 0
+    var available: CGFloat = 0
+    var onDrag: ((CGFloat) -> Void)?
+    var onEnd: ((CGFloat) -> Void)?
+
+    private var dragStart: (height: CGFloat, windowY: CGFloat)?
+    private var isHovering = false
+    private var trackingArea: NSTrackingArea?
+
+    /// The panel moves when its background is dragged; this view takes the
+    /// drag for itself instead.
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override var isFlipped: Bool { true }
+
+    /// A click meant for the handle must start the drag even when the panel is
+    /// not key yet.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea { removeTrackingArea(trackingArea) }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .resizeUpDown)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovering = true
+        needsDisplay = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovering = false
+        needsDisplay = true
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        dragStart = (displayedHeight, event.locationInWindow.y)
+        needsDisplay = true
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let dragStart else { return }
+        onDrag?(height(for: event, from: dragStart))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let dragStart else { return }
+        self.dragStart = nil
+        needsDisplay = true
+        onEnd?(height(for: event, from: dragStart))
+    }
+
+    /// Dragging up grows the pane: the window y axis points up, the pane
+    /// height is measured downwards.
+    private func height(for event: NSEvent, from dragStart: (height: CGFloat, windowY: CGFloat)) -> CGFloat {
+        let translation = dragStart.windowY - event.locationInWindow.y
+        return DictionaryPaneLayout.draggedHeight(
+            start: dragStart.height,
+            translation: translation,
+            available: available
+        )
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let isActive = isHovering || dragStart != nil
+        let thickness: CGFloat = isActive ? 2 : 1
+        let line = NSRect(
+            x: 0,
+            y: ((bounds.height - thickness) / 2).rounded(.down),
+            width: bounds.width,
+            height: thickness
+        )
+        NSColor.labelColor.withAlphaComponent(isActive ? 0.18 : 0.07).setFill()
+        line.fill()
     }
 }
 

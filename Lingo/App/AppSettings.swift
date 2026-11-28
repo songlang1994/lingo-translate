@@ -13,6 +13,7 @@ final class AppSettings: ObservableObject {
         static let shortcutCode = "shortcutKeyCode"
         static let shortcutModifiers = "shortcutModifiers"
         static let shortcutDisplay = "shortcutDisplay"
+        static let dictionaryHeight = "dictionaryHeight"
     }
 
     private enum ShortcutKind {
@@ -23,6 +24,7 @@ final class AppSettings: ObservableObject {
     static let defaultEndpoint = "https://api.openai.com/v1/responses"
     static let defaultModel = "gpt-4.1-mini"
     static let defaultReasoningEffort: ReasoningEffort = .none
+    static let defaultDictionaryHeight: CGFloat = 200
 
     @Published var endpoint: String {
         didSet { defaults.set(endpoint, forKey: StorageKey.endpoint) }
@@ -46,6 +48,11 @@ final class AppSettings: ObservableObject {
 
     @Published var targetCode: String {
         didSet { defaults.set(targetCode, forKey: StorageKey.target) }
+    }
+
+    /// Height of the dictionary pane in points, remembered across launches.
+    @Published var dictionaryHeight: CGFloat {
+        didSet { defaults.set(Double(dictionaryHeight), forKey: StorageKey.dictionaryHeight) }
     }
 
     @Published var shortcut: KeyShortcut {
@@ -81,6 +88,8 @@ final class AppSettings: ObservableObject {
         targetCode = (storedTarget == nil || storedTarget == Language.automatic.code)
             ? Language.defaultTarget.code
             : storedTarget!
+        let storedDictionaryHeight = CGFloat(defaults.double(forKey: StorageKey.dictionaryHeight))
+        dictionaryHeight = storedDictionaryHeight > 0 ? storedDictionaryHeight : Self.defaultDictionaryHeight
         shortcut = Self.loadShortcut()
         apiKey = APIKeyStore.load()
     }

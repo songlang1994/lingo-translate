@@ -22,6 +22,8 @@ final class TranslatorModel: ObservableObject {
     @Published var copied = false
     @Published var focusToken = 0
     @Published private(set) var highlightedSegment: Int?
+    /// Dictionary entry for a word or short phrase, shown under both columns.
+    @Published private(set) var dictionaryState: DictionaryState = .none
 
     /// Snapshot of the source lines the current `segments` refer to.
     private(set) var requestLines: [String] = []
@@ -31,7 +33,9 @@ final class TranslatorModel: ObservableObject {
 
     private let settings: AppSettings
     private let client: TranslationClient
+    private let dictionaryClient: DictionaryClient?
     private var translationTask: Task<Void, Never>?
+    private var dictionaryTask: Task<Void, Never>?
     private var debounceTask: Task<Void, Never>?
     private var copyTask: Task<Void, Never>?
     private var requestID = 0
@@ -40,9 +44,20 @@ final class TranslatorModel: ObservableObject {
     /// Replies longer than this without any opening tag switch to the fallback protocol.
     static let maximumUntaggedReply = 300
 
-    init(settings: AppSettings, client: TranslationClient? = nil) {
+    init(
+        settings: AppSettings,
+        client: TranslationClient? = nil,
+        dictionaryClient: DictionaryClient? = nil
+    ) {
         self.settings = settings
         self.client = client ?? ResponsesClient()
+        if let dictionaryClient {
+            self.dictionaryClient = dictionaryClient
+        } else {
+            // An injected translation client comes from tests; letting the
+            // default dictionary client run there would reach the network.
+            self.dictionaryClient = client == nil ? ResponsesDictionaryClient() : nil
+        }
         sourceCode = settings.sourceCode
         targetCode = settings.targetCode
     }
@@ -74,6 +89,21 @@ final class TranslatorModel: ObservableObject {
         trimmedInput.isEmpty
     }
 
+    /// The card belongs to the current output: it hides while the source is
+    /// edited and while a newer translation is waiting to start.
+    var isDictionaryVisible: Bool {
+        guard isOutputCurrent else { return false }
+        if case .none = dictionaryState { return false }
+        return true
+    }
+
+    /// Height of the dictionary pane, shared with the settings so the user's
+    /// drag survives a relaunch. The view clamps it to the current window.
+    var dictionaryPaneHeight: CGFloat {
+        get { settings.dictionaryHeight }
+        set { settings.dictionaryHeight = newValue }
+    }
+
     func requestFocus() {
         focusToken &+= 1
     }
@@ -101,6 +131,7 @@ final class TranslatorModel: ObservableObject {
         hasPendingTranslation = false
         errorMessage = nil
         input = text
+        cancelDictionary(clearing: true)
         validateHighlight()
     }
 
@@ -110,6 +141,7 @@ final class TranslatorModel: ObservableObject {
         debounceTask = nil
         hasPendingTranslation = false
         cancelRequest()
+        cancelDictionary(clearing: true)
         errorMessage = nil
         input = ""
         requestLines = []
@@ -195,6 +227,7 @@ final class TranslatorModel: ObservableObject {
         debounceTask?.cancel()
         hasPendingTranslation = false
         cancelRequest()
+        cancelDictionary(clearing: true)
         errorMessage = nil
 
         sourceCode = newSource.code
@@ -227,6 +260,8 @@ final class TranslatorModel: ObservableObject {
         debounceTask = nil
         hasPendingTranslation = false
         cancelRequest()
+        // A finished entry stays useful; an unfinished lookup has nothing to show.
+        cancelDictionary(clearing: false)
     }
 
     func copyOutput() {
@@ -263,6 +298,9 @@ final class TranslatorModel: ObservableObject {
 
     private func scheduleTranslation() {
         debounceTask?.cancel()
+        // The old entry and the pending translation both belong to the old
+        // language pair.
+        cancelDictionary(clearing: true)
 
         guard !trimmedInput.isEmpty else {
             hasPendingTranslation = false
@@ -304,6 +342,14 @@ final class TranslatorModel: ObservableObject {
         segments = []
         highlightedSegment = nil
 
+        startDictionaryLookup(
+            term: trimmedInput,
+            source: source,
+            target: target,
+            configuration: configuration,
+            requestID: currentRequestID
+        )
+
         translationTask = Task { [weak self] in
             await self?.translate(
                 lines: lines,
@@ -312,6 +358,47 @@ final class TranslatorModel: ObservableObject {
                 configuration: configuration,
                 requestID: currentRequestID
             )
+        }
+    }
+
+    /// Starts the dictionary request next to the translation. A missing entry,
+    /// an invalid reply, or an error only hides the card.
+    private func startDictionaryLookup(
+        term: String,
+        source: Language,
+        target: Language,
+        configuration: Configuration,
+        requestID currentRequestID: Int
+    ) {
+        cancelDictionary(clearing: true)
+        guard let dictionaryClient, DictionaryDetector.isTerm(term) else { return }
+        dictionaryState = .loading
+
+        dictionaryTask = Task { [weak self, dictionaryClient] in
+            let entry: DictionaryEntry?
+            do {
+                entry = try await dictionaryClient.lookup(
+                    term: term,
+                    source: source,
+                    target: target,
+                    configuration: configuration
+                )
+            } catch {
+                entry = nil
+            }
+            guard !Task.isCancelled, let self, self.requestID == currentRequestID else { return }
+            self.dictionaryTask = nil
+            self.dictionaryState = entry.map(DictionaryState.entry) ?? .none
+        }
+    }
+
+    /// Cancels an in-flight lookup. `clearing` also drops a finished entry; a
+    /// cancelled but unfinished lookup always clears the loading state.
+    private func cancelDictionary(clearing: Bool) {
+        dictionaryTask?.cancel()
+        dictionaryTask = nil
+        if clearing || dictionaryState == .loading {
+            dictionaryState = .none
         }
     }
 
