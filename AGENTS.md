@@ -56,7 +56,8 @@ scripts/      icon generation script
 - Keep the implementation native; do not add third-party dependencies unless the user asks.
 - Update this file when translation flow, segmentation or alignment, shortcuts, permissions, build commands, or the directory layout change.
 - Verify UI changes with the `ui-visual-check` skill using window-level screenshots only. Never capture the whole screen, and keep images in `/tmp`. Leave the app running when the task is done so the user can check it; quit it only when the user asks or a later check needs a relaunch.
-- Do not script UI interaction (clicks, drags, gestures) to test behavior; synthetic events are slow and unreliable here. Ask the user to perform the interaction and report back instead.
+- Do not script UI interaction (clicks, drags, gestures) to test behavior, and do not record the screen or window to inspect motion; synthetic events and frame captures are slow and unreliable here. Ask the user to perform the interaction or watch the animation and report back instead. Window screenshots of still states are still the way to check appearance.
+- When testing motion, check the system Reduce Motion setting first: with it on, SwiftUI turns the dictionary card's `.move` transition into a crossfade, so a slide that looks like a fade is the setting, not the code. Do not change an animation to work around it.
 - `.env` holds local endpoint settings and is git-ignored. Do not commit it or print its secrets.
 - Commit messages: English imperative mood, capitalized, no prefix; the body explains why.
 - Documentation states facts; avoid inflated wording.

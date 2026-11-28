@@ -7,11 +7,22 @@ struct TranslatorView: View {
     /// Height of the dictionary pane while it is being dragged; committed to
     /// the settings when the drag ends.
     @State private var dictionaryHeight: CGFloat
+    /// Whether the card is part of the layout. It stays true until the
+    /// slide-out finishes, so the card leaves with an animation.
+    @State private var isCardShown = false
+    /// The entry the card showed last, so a card sliding out keeps its content
+    /// instead of emptying as soon as the model drops the entry.
+    @State private var lastCard: CardSnapshot?
+
+    private static let cardAnimation = Animation.smooth(duration: 0.25)
 
     init(model: TranslatorModel, openSettings: @escaping () -> Void) {
         self.model = model
         self.openSettings = openSettings
         _dictionaryHeight = State(initialValue: model.dictionaryPaneHeight)
+        // A card that already has an entry when the view is built is part of
+        // the first layout, not something that appeared while the user watched.
+        _isCardShown = State(initialValue: model.isDictionaryVisible)
     }
 
     var body: some View {
@@ -117,23 +128,53 @@ struct TranslatorView: View {
         GeometryReader { proxy in
             VStack(spacing: 0) {
                 columns
-                if model.isDictionaryVisible {
-                    DictionaryResizeHandle(
-                        displayedHeight: paneHeight(available: proxy.size.height),
-                        available: proxy.size.height,
-                        onDrag: { height in
-                            dictionaryHeight = DictionaryPaneLayout.height(height, available: proxy.size.height)
-                        },
-                        onEnd: { height in
-                            dictionaryHeight = DictionaryPaneLayout.height(height, available: proxy.size.height)
-                            model.dictionaryPaneHeight = dictionaryHeight
-                        }
-                    )
-                    .frame(height: DictionaryPaneLayout.dividerHeight)
-                    DictionaryView(state: model.dictionaryState, sourceText: model.input)
-                        .frame(height: paneHeight(available: proxy.size.height))
+                if isCardShown {
+                    dictionaryPane(available: proxy.size.height)
+                        .transition(.move(edge: .bottom))
                 }
             }
+            // The card slides up from under the panel and leaves the same way,
+            // so it is clipped at the content bounds while it moves.
+            .clipped()
+        }
+        .onChange(of: model.dictionaryState, initial: true) { _, state in
+            guard case let .entry(entry) = state else { return }
+            lastCard = CardSnapshot(entry: entry, sourceText: model.input)
+        }
+        .onChange(of: model.isDictionaryVisible, initial: true) { _, visible in
+            guard visible != isCardShown else { return }
+            withAnimation(Self.cardAnimation) { isCardShown = visible }
+        }
+    }
+
+    /// The entry the card shows, falling back to the last one while the card
+    /// slides out.
+    private var cardState: DictionaryState {
+        if case let .entry(entry) = model.dictionaryState { return .entry(entry) }
+        return lastCard.map { .entry($0.entry) } ?? .none
+    }
+
+    private var cardSourceText: String {
+        if case .entry = model.dictionaryState { return model.input }
+        return lastCard?.sourceText ?? model.input
+    }
+
+    private func dictionaryPane(available: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            DictionaryResizeHandle(
+                displayedHeight: paneHeight(available: available),
+                available: available,
+                onDrag: { height in
+                    dictionaryHeight = DictionaryPaneLayout.height(height, available: available)
+                },
+                onEnd: { height in
+                    dictionaryHeight = DictionaryPaneLayout.height(height, available: available)
+                    model.dictionaryPaneHeight = dictionaryHeight
+                }
+            )
+            .frame(height: DictionaryPaneLayout.dividerHeight)
+            DictionaryView(state: cardState, sourceText: cardSourceText)
+                .frame(height: paneHeight(available: available))
         }
     }
 
@@ -183,6 +224,13 @@ struct TranslatorView: View {
             .fill(Color.primary.opacity(0.07))
             .frame(height: 1)
     }
+}
+
+/// Entry the dictionary card last displayed, captured with the source text it
+/// was looked up for.
+private struct CardSnapshot {
+    var entry: DictionaryEntry
+    var sourceText: String
 }
 
 /// Divider between the columns and the dictionary pane. It has to be an
