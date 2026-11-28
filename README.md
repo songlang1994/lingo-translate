@@ -40,7 +40,7 @@ make install  # 构建 Release 并安装到 /Applications
 | Endpoint | Responses 接口地址，或服务的基础地址，如 `https://api.deepseek.com` |
 | Model | 模型名称，如 `gpt-4.1-mini` |
 | API key | 接口密钥，保存在系统钥匙串；本地地址可留空 |
-| Reasoning effort | 思考级别，默认 `None`；`Default` 由服务端决定 |
+| Reasoning effort | 思考级别，可选 `None` / `Low` / `Medium` / `High`，默认 `None` |
 
 Endpoint 可以只填服务地址，应用会自动补全 `/v1/responses`；已经是完整地址时保持不变。
 

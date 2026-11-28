@@ -18,9 +18,6 @@ struct SettingsView: View {
                     Text(effort.title).tag(effort)
                 }
             }
-            Text("None disables reasoning. Default omits the field and lets the server decide.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
             LabeledContent("Shortcut") {
                 ShortcutRecorder(shortcut: $settings.shortcut, suspendHotKey: suspendHotKey)
             }
@@ -32,7 +29,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 460, height: 312)
+        .frame(width: 460, height: 265)
         .onAppear {
             refreshAccessibilityStatus()
         }

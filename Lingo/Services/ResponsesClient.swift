@@ -67,7 +67,7 @@ final class ResponsesClient: TranslationClient {
             instructions: instructions,
             input: input,
             stream: true,
-            reasoning: configuration.reasoningEffort.requestValue.map(RequestBody.Reasoning.init(effort:))
+            reasoning: RequestBody.Reasoning(effort: configuration.reasoningEffort.rawValue)
         )
 
         do {

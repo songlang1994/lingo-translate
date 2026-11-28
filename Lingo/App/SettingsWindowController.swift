@@ -29,7 +29,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             window.isReleasedWhenClosed = false
             window.isRestorable = false
             window.delegate = self
-            window.setContentSize(NSSize(width: 460, height: 312))
+            window.setContentSize(NSSize(width: 460, height: 265))
             self.window = window
         }
 

@@ -81,6 +81,7 @@ final class AppSettings: ObservableObject {
            let effort = ReasoningEffort(rawValue: stored) {
             reasoningEffort = effort
         } else {
+            // Stored values outside the presets, including ones from older versions, fall back to none.
             reasoningEffort = Self.defaultReasoningEffort
         }
         sourceCode = defaults.string(forKey: StorageKey.source) ?? Language.automatic.code

@@ -452,6 +452,29 @@ final class TranslatorModelTests: XCTestCase {
 
     // MARK: - Pure logic
 
+    func testStoredReasoningEffortOutsideThePresetsFallsBackToNone() {
+        let defaults = UserDefaults.standard
+        let key = "reasoningEffort"
+        let original = defaults.string(forKey: key)
+        defer {
+            if let original {
+                defaults.set(original, forKey: key)
+            } else {
+                defaults.removeObject(forKey: key)
+            }
+        }
+
+        for stored in ["minimal", "automatic", ""] {
+            defaults.set(stored, forKey: key)
+            XCTAssertEqual(AppSettings().reasoningEffort, .none, "stored \"\(stored)\"")
+        }
+
+        defaults.set("medium", forKey: key)
+        XCTAssertEqual(AppSettings().reasoningEffort, .medium)
+        defaults.set("high", forKey: key)
+        XCTAssertEqual(AppSettings().reasoningEffort, .high)
+    }
+
     func testDictionaryPaneHeightIsRemembered() {
         let settings = AppSettings()
         let original = settings.dictionaryHeight

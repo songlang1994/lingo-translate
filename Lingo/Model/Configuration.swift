@@ -3,25 +3,16 @@ import Foundation
 /// How much internal reasoning the model may spend before answering.
 /// Sent as `reasoning.effort` on the Responses API.
 enum ReasoningEffort: String, CaseIterable, Identifiable {
-    /// Omits the field so the server default applies.
-    case automatic = ""
     case none
-    case minimal
     case low
     case medium
     case high
 
     var id: String { rawValue }
 
-    var requestValue: String? {
-        self == .automatic ? nil : rawValue
-    }
-
     var title: String {
         switch self {
-        case .automatic: return "Default"
         case .none: return "None"
-        case .minimal: return "Minimal"
         case .low: return "Low"
         case .medium: return "Medium"
         case .high: return "High"
