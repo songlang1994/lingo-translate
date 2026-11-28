@@ -164,7 +164,7 @@ final class DictionaryPaneViewLayoutTests: XCTestCase {
         )
         model.prefill("ephemeral")
         let deadline = Date().addingTimeInterval(5)
-        while (model.isTranslating || model.dictionaryState == .loading), Date() < deadline {
+        while (model.isTranslating || model.isDictionaryLookupPending), Date() < deadline {
             try? await Task.sleep(nanoseconds: 5_000_000)
         }
         XCTAssertTrue(model.isDictionaryVisible)

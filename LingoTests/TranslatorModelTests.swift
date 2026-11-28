@@ -309,11 +309,11 @@ final class TranslatorModelTests: XCTestCase {
     /// Waits for the translation and for any lookup it started.
     private func waitForTranslation(_ model: TranslatorModel) async {
         let deadline = Date().addingTimeInterval(5)
-        while (model.isTranslating || model.dictionaryState == .loading), Date() < deadline {
+        while (model.isTranslating || model.isDictionaryLookupPending), Date() < deadline {
             try? await Task.sleep(nanoseconds: 5_000_000)
         }
         XCTAssertFalse(model.isTranslating)
-        XCTAssertNotEqual(model.dictionaryState, .loading)
+        XCTAssertFalse(model.isDictionaryLookupPending)
     }
 
     func testWordAlsoGetsADictionaryEntry() async {
@@ -326,6 +326,30 @@ final class TranslatorModelTests: XCTestCase {
 
         XCTAssertEqual(dictionary.terms, ["ephemeral"])
         XCTAssertEqual(model.output, "短暂的")
+        XCTAssertEqual(model.dictionaryState, .entry(sampleEntry))
+        XCTAssertTrue(model.isDictionaryVisible)
+    }
+
+    func testDictionaryStaysHiddenUntilTheEntryIsReady() async {
+        let dictionary = ScriptedDictionaryClient([sampleEntry])
+        dictionary.delayNanoseconds = 1_000_000_000
+        let client = ScriptedClient([.reply("<s lines=\"1\">短暂的</s>")])
+        let model = TranslatorModel(settings: AppSettings(), client: client, dictionaryClient: dictionary)
+
+        model.prefill("ephemeral")
+
+        let deadline = Date().addingTimeInterval(5)
+        while model.isTranslating, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertFalse(model.isTranslating)
+        XCTAssertTrue(model.isDictionaryLookupPending)
+        XCTAssertEqual(model.dictionaryState, .none)
+        XCTAssertFalse(model.isDictionaryVisible)
+
+        while model.isDictionaryLookupPending, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
         XCTAssertEqual(model.dictionaryState, .entry(sampleEntry))
         XCTAssertTrue(model.isDictionaryVisible)
     }
@@ -391,7 +415,7 @@ final class TranslatorModelTests: XCTestCase {
 
         model.prefill("ephemeral")
         let deadline = Date().addingTimeInterval(5)
-        while model.dictionaryState == .loading, Date() < deadline {
+        while model.isDictionaryLookupPending, Date() < deadline {
             try? await Task.sleep(nanoseconds: 5_000_000)
         }
         XCTAssertTrue(model.isTranslating)

@@ -59,6 +59,7 @@ final class ScriptedClient: TranslationClient {
 final class ScriptedDictionaryClient: DictionaryClient {
     var results: [DictionaryEntry?]
     var failure: Error?
+    var delayNanoseconds: UInt64 = 0
     private(set) var terms: [String] = []
 
     init(_ results: [DictionaryEntry?] = []) {
@@ -72,6 +73,9 @@ final class ScriptedDictionaryClient: DictionaryClient {
         configuration: Configuration
     ) async throws -> DictionaryEntry? {
         terms.append(term)
+        if delayNanoseconds > 0 {
+            try await Task.sleep(nanoseconds: delayNanoseconds)
+        }
         if let failure { throw failure }
         return results.isEmpty ? nil : results.removeFirst()
     }

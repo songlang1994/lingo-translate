@@ -20,6 +20,5 @@ struct DictionaryEntry: Equatable {
 
 enum DictionaryState: Equatable {
     case none
-    case loading
     case entry(DictionaryEntry)
 }

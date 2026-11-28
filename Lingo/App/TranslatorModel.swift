@@ -90,11 +90,17 @@ final class TranslatorModel: ObservableObject {
     }
 
     /// The card belongs to the current output: it hides while the source is
-    /// edited and while a newer translation is waiting to start.
+    /// edited and while a newer translation is waiting to start. It appears
+    /// only once the entry is ready, so there is no loading state.
     var isDictionaryVisible: Bool {
         guard isOutputCurrent else { return false }
-        if case .none = dictionaryState { return false }
-        return true
+        if case .entry = dictionaryState { return true }
+        return false
+    }
+
+    /// True while a lookup is in flight; the entry may still arrive.
+    var isDictionaryLookupPending: Bool {
+        dictionaryTask != nil
     }
 
     /// Height of the dictionary pane, shared with the settings so the user's
@@ -372,7 +378,6 @@ final class TranslatorModel: ObservableObject {
     ) {
         cancelDictionary(clearing: true)
         guard let dictionaryClient, DictionaryDetector.isTerm(term) else { return }
-        dictionaryState = .loading
 
         dictionaryTask = Task { [weak self, dictionaryClient] in
             let entry: DictionaryEntry?
@@ -392,12 +397,11 @@ final class TranslatorModel: ObservableObject {
         }
     }
 
-    /// Cancels an in-flight lookup. `clearing` also drops a finished entry; a
-    /// cancelled but unfinished lookup always clears the loading state.
+    /// Cancels an in-flight lookup. `clearing` also drops a finished entry.
     private func cancelDictionary(clearing: Bool) {
         dictionaryTask?.cancel()
         dictionaryTask = nil
-        if clearing || dictionaryState == .loading {
+        if clearing {
             dictionaryState = .none
         }
     }

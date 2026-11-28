@@ -28,17 +28,6 @@ struct DictionaryView: View {
         switch state {
         case .none:
             EmptyView()
-        case .loading:
-            HStack(spacing: 6) {
-                ProgressView()
-                    .controlSize(.mini)
-                Text("Looking up…")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
         case let .entry(entry):
             entryContent(entry)
         }
@@ -119,7 +108,7 @@ struct DictionaryView: View {
             if !example.translation.isEmpty {
                 Text(example.translation)
                     .font(.system(size: 12))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.leading, 8)
