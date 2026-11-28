@@ -11,13 +11,13 @@ final class DictionaryPaneLayoutTests: XCTestCase {
         XCTAssertEqual(DictionaryPaneLayout.height(-40, available: 600), DictionaryPaneLayout.minimumHeight)
     }
 
-    func testPaneLeavesOneVisibleTextLineUnderTheHeader() {
+    func testPaneLeavesTwoVisibleTextLinesUnderTheHeader() {
         let available: CGFloat = 400
         let height = DictionaryPaneLayout.height(10_000, available: available)
         let columns = available - DictionaryPaneLayout.dividerHeight - height
 
         XCTAssertEqual(columns, DictionaryPaneLayout.minimumColumnsHeight, accuracy: 0.001)
-        XCTAssertGreaterThanOrEqual(columns, SegmentTextView.lineHeight)
+        XCTAssertGreaterThanOrEqual(columns, BilingualScrollView.topPadding + SegmentTextView.lineHeight * 2)
     }
 
     func testSmallWindowStillGivesThePaneItsMinimum() {

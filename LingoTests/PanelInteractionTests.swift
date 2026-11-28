@@ -150,8 +150,12 @@ final class DictionaryPaneViewLayoutTests: XCTestCase {
     )
 
     /// Hosts a panel that shows the dictionary pane at the given stored height,
-    /// waits for the entry, and returns the columns' laid-out height.
-    private func columnsHeight(storedHeight: CGFloat, windowHeight: CGFloat) async throws -> CGFloat {
+    /// waits for the entry, and returns the columns' scroll view.
+    private func columnsView(
+        storedHeight: CGFloat,
+        windowHeight: CGFloat,
+        reply: String = "<s lines=\"1\">短暂的</s>"
+    ) async throws -> BilingualScrollView {
         let settings = AppSettings()
         let original = settings.dictionaryHeight
         defer { settings.dictionaryHeight = original }
@@ -159,7 +163,7 @@ final class DictionaryPaneViewLayoutTests: XCTestCase {
 
         let model = TranslatorModel(
             settings: settings,
-            client: ScriptedClient([.reply("<s lines=\"1\">短暂的</s>")]),
+            client: ScriptedClient([.reply(reply)]),
             dictionaryClient: ScriptedDictionaryClient([entry])
         )
         model.prefill("ephemeral")
@@ -182,8 +186,11 @@ final class DictionaryPaneViewLayoutTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 100_000_000)
         hosting.layoutSubtreeIfNeeded()
 
-        let scrollView = try XCTUnwrap(firstView(of: BilingualScrollView.self, in: hosting))
-        return scrollView.frame.height
+        return try XCTUnwrap(firstView(of: BilingualScrollView.self, in: hosting))
+    }
+
+    private func columnsHeight(storedHeight: CGFloat, windowHeight: CGFloat) async throws -> CGFloat {
+        try await columnsView(storedHeight: storedHeight, windowHeight: windowHeight).frame.height
     }
 
     private func firstView<T: NSView>(of type: T.Type, in view: NSView) -> T? {
@@ -194,9 +201,24 @@ final class DictionaryPaneViewLayoutTests: XCTestCase {
         return nil
     }
 
-    func testSmallWindowKeepsOneTextLineUnderTheHeader() async throws {
+    func testSmallWindowKeepsTwoTextLinesUnderTheHeader() async throws {
         let columns = try await columnsHeight(storedHeight: 400, windowHeight: 300)
         XCTAssertGreaterThanOrEqual(columns, DictionaryPaneLayout.minimumColumnsHeight - 1)
+        XCTAssertGreaterThanOrEqual(columns, BilingualScrollView.topPadding + SegmentTextView.lineHeight * 2)
+    }
+
+    /// The pane pushed as far up as it goes still leaves a two-line
+    /// translation fully visible, so the columns show no scrollbar.
+    func testTwoLinesDoNotScrollWithThePaneAtItsMaximum() async throws {
+        let scrollView = try await columnsView(
+            storedHeight: 10_000,
+            windowHeight: 300,
+            reply: "<s lines=\"1\">短暂的\n转瞬即逝的</s>"
+        )
+        XCTAssertEqual(scrollView.frame.height, DictionaryPaneLayout.minimumColumnsHeight, accuracy: 1)
+
+        let document = try XCTUnwrap(scrollView.documentView)
+        XCTAssertLessThanOrEqual(document.frame.height, scrollView.contentView.bounds.height + 0.5)
     }
 
     func testPaneFollowsTheStoredHeight() async throws {

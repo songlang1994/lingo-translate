@@ -2,16 +2,23 @@ import CoreGraphics
 
 /// Geometry of the dictionary pane under the two columns. The pane is
 /// user-resizable, but it never grows so tall that the columns lose their
-/// last text line, and never shrinks below its own minimum.
+/// last two text lines, and never shrinks below its own minimum.
 enum DictionaryPaneLayout {
     /// Enough for a pronunciation row, one sense, and an example.
     static let minimumHeight: CGFloat = 96
     /// The drag handle doubles as the separator line.
     static let dividerHeight: CGFloat = 7
-    /// One text line plus the text view's top padding, so the columns always
-    /// keep one fully visible line under the header.
+    /// Slack on top of the two lines, so a two-line text never sits exactly
+    /// at the scroll view's edge where rounding could clip it.
+    static let columnsHeadroom: CGFloat = 6
+    /// Two text lines plus the columns' padding, so a source or translation
+    /// of up to two lines stays fully visible without scrolling while the
+    /// dictionary pane is open.
     static var minimumColumnsHeight: CGFloat {
-        BilingualScrollView.topPadding + SegmentTextView.lineHeight
+        BilingualScrollView.topPadding
+            + SegmentTextView.lineHeight * 2
+            + BilingualScrollView.bottomPadding
+            + columnsHeadroom
     }
 
     static func limits(available: CGFloat) -> ClosedRange<CGFloat> {
