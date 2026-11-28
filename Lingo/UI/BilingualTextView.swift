@@ -113,6 +113,7 @@ final class BilingualScrollView: NSScrollView, NSTextViewDelegate {
         hasVerticalScroller = true
         hasHorizontalScroller = false
         autohidesScrollers = true
+        verticalScroller = TracklessScroller()
         documentView = document
 
         document.onLayout = { [weak self] in self?.layoutDocument() }

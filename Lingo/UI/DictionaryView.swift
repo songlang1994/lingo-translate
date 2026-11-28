@@ -8,18 +8,9 @@ struct DictionaryView: View {
     /// Source text, used to avoid repeating the headword right under the word.
     let sourceText: String
 
-    private static let topID = "dictionary-top"
-
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.vertical) {
-                content.id(Self.topID)
-            }
-            .scrollIndicators(.automatic)
-            .scrollBounceBehavior(.basedOnSize)
-            .onChange(of: state) { _, _ in
-                proxy.scrollTo(Self.topID, anchor: .top)
-            }
+        DictionaryScrollView(state: state) {
+            content
         }
     }
 
@@ -118,5 +109,60 @@ struct DictionaryView: View {
                 .frame(width: 2)
         }
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// The scrolling area of the dictionary card. SwiftUI's `ScrollView` keeps the
+/// system scroller, whose light track shows as a white strip on the panel's
+/// translucent background; an AppKit scroll view is the supported place to put
+/// a scroller that draws only its knob.
+private struct DictionaryScrollView<Content: View>: NSViewRepresentable {
+    let state: DictionaryState
+    let content: Content
+
+    init(state: DictionaryState, @ViewBuilder content: () -> Content) {
+        self.state = state
+        self.content = content()
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(state: state)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+        scrollView.verticalScroller = TracklessScroller()
+
+        let hostingView = NSHostingView(rootView: content)
+        hostingView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.documentView = hostingView
+        // The content follows the pane's width and takes its natural height.
+        hostingView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor).isActive = true
+        context.coordinator.hostingView = hostingView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        context.coordinator.hostingView?.rootView = content
+        // A new entry starts at its first line.
+        guard context.coordinator.state != state else { return }
+        context.coordinator.state = state
+        scrollView.contentView.scroll(to: .zero)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
+    final class Coordinator {
+        var hostingView: NSHostingView<Content>?
+        var state: DictionaryState
+
+        init(state: DictionaryState) {
+            self.state = state
+        }
     }
 }
